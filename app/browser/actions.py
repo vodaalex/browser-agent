@@ -63,11 +63,10 @@ class BrowserActions:
     # ── Private ──────────────────────────────────────────────────
 
     async def _wait_for_stable(self):
-        """Wait for page network to settle after navigation."""
         try:
-            await self._page.wait_for_load_state("networkidle", timeout=8_000)
+            await self._page.wait_for_load_state("networkidle", timeout=4_000)  # было 8000
         except Exception:
-            pass  # Timeout is fine — continue
+            pass
 
 
 
