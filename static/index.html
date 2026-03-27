@@ -403,25 +403,27 @@
     .dot-ask      { background: var(--c-ask); }
     .dot-complete { background: var(--c-complete); }
     .dot-error    { background: var(--c-error); }
-    /* Reflection dot: outline circle */
-    .dot-reflect {
-      background: transparent;
-      border: 2px solid #f59e0b;
-      width: 9px; height: 9px;
-      box-sizing: border-box;
+    /* Plan block */
+    .dot-plan { background: var(--c-task); }
+
+    .plan-body {
+      margin-top: 5px;
+      padding: 8px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
     }
 
-    /* Reflection body */
-    .reflect-body {
-      background: #fffbeb;
-      border: 1px solid #fef3c7;
-      border-radius: var(--radius-sm);
-      padding: 7px 10px;
-      margin-top: 5px;
-      font-style: italic;
-      font-size: 12px;
-      color: var(--text-2);
-      line-height: 1.6;
+    .plan-step {
+      font-size: 12.5px;
+      color: var(--text);
+      line-height: 1.7;
+      transition: opacity 0.3s, text-decoration 0.3s;
+    }
+
+    .plan-step.done {
+      opacity: 0.4;
+      text-decoration: line-through;
     }
 
     /* Action result row */
@@ -699,6 +701,25 @@
   function handleEvent(ev) {
     switch (ev.type) {
 
+      case 'plan': {
+        showThinking(false);
+        const stepsHtml = (ev.steps || [])
+          .map((s, i) => `<div class="plan-step" id="plan-step-${i}">${i + 1}. ${esc(s)}</div>`)
+          .join('');
+        const body = `<div class="plan-body">${stepsHtml}</div>`;
+        addItem({
+          type: 'plan',
+          dotClass: 'dot-plan',
+          tag: 'plan',
+          title: 'Plan',
+          bodyHtml: body,
+          collapsible: false,
+          collapsed: false,
+        });
+        showThinking(true);
+        break;
+      }
+
       case 'thought': {
         setStatus('thinking', 'Thinking');
         showThinking(false);
@@ -778,22 +799,6 @@
             break;
           }
         }
-        break;
-      }
-
-      case 'reflection': {
-        lastThoughtId = null;
-        showThinking(false);
-        const body = `<div class="reflect-body">${esc(ev.content)}</div>`;
-        addItem({
-          type: 'reflection',
-          dotClass: 'dot-reflect',
-          tag: 'reflect',
-          title: `Self-check at step ${ev.step}`,
-          bodyHtml: body,
-          collapsible: false,
-          collapsed: false,
-        });
         break;
       }
 

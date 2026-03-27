@@ -22,12 +22,12 @@ On each step the agent:
 
 ## Advanced Patterns
 
-### Dual-Channel Perception
+### 1. Dual-Channel Perception
 
 On every step the agent calls `get_page_state()` which returns:
 
-1. **Screenshot** (base64 PNG) — passed as vision input to Claude
-2. **Accessibility tree** — top 30 interactive elements with type, text, bbox
+1. **Screenshot** (base64 JPEG) — passed as vision input to Claude
+2. **Accessibility tree** — top 25 interactive elements with type, text, bbox
 
 Claude uses both channels simultaneously:
 - Vision for understanding layout, reading text, spotting buttons
@@ -36,12 +36,21 @@ Claude uses both channels simultaneously:
 This eliminates the need for hardcoded selectors entirely.
 The agent discovers UI structure dynamically on every step.
 
-### Context Management
+### 2. Hierarchical Planning
+
+Before executing a task the agent makes one lightweight API call
+(no screenshot) and produces a plan of 3-5 high-level steps.
+The plan is injected into the conversation context and guides execution.
+The agent can deviate from the plan on its own when needed.
+
+Pattern: **Plan → Execute → Adapt**
+
+### 3. Context Management
 
 - Full conversation history maintained across steps
 - Screenshots rotated: only last 2 kept in context (older replaced with placeholder)
 - Compression triggered at 200k chars to stay within token limits
-- `max_tokens` capped at 1500 to reduce cost per step
+- `max_tokens` capped at 1024 to reduce cost per step
 
 ## Setup
 

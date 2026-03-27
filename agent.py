@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from typing import Callable, Awaitable
 from urllib.parse import urlparse
 
@@ -12,7 +13,6 @@ from tools import TOOL_DEFINITIONS
 
 MAX_SCREENSHOTS_IN_CONTEXT = 2
 COMPRESS_THRESHOLD = 200_000
-REFLECT_EVERY = 5
 MAX_STEPS = 25
 
 
@@ -68,32 +68,32 @@ class BrowserAgent:
         self._cached_page_state = None
         self._url_history: list[str] = []
 
-    async def _should_reflect(self) -> bool:
-        return self._step > 0 and self._step % REFLECT_EVERY == 0
-
-    async def _reflect(self, task: str) -> str:
-        """Lightweight self-check — no screenshot, short response."""
-        prompt = (
-            f'You are reviewing your own progress on this task: "{task}"\n'
-            f"You have taken {self._step} steps so far.\n"
-            f"Current page URL: {self.browser.page.url}\n\n"
-            "Review the last few actions and answer:\n"
-            "1. Am I making progress toward the goal?\n"
-            "2. Am I stuck in a loop (repeating same actions)?\n"
-            "3. Do I need information from the user to proceed?\n"
-            "4. What is the single best next action?\n\n"
-            "If stuck → call ask_user() immediately.\n"
-            "If goal achieved → call task_complete() immediately.\n"
-            "If need a different approach → describe it in one sentence.\n"
-            "Respond concisely."
-        )
-        response = await self.client.messages.create(
-            model=self.model,
-            max_tokens=300,
-            system="You are a self-monitoring agent. Be brief and decisive.",
-            messages=self.messages + [{"role": "user", "content": prompt}],
-        )
-        return next((b.text for b in response.content if b.type == "text"), "")
+    async def _create_plan(self, task: str) -> list[str]:
+        """One cheap API call (no screenshot) to outline 3-5 high-level steps."""
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=300,
+                system=(
+                    "You are a planning agent. Given a browser task, "
+                    "output a JSON array of 3-5 high-level steps to accomplish it. "
+                    "Steps should be abstract goals, not specific actions. "
+                    'Example: ["Navigate to hh.ru", "Search for AI engineer vacancies", '
+                    '"Open first 3 relevant results", "Apply with cover letter"]\n'
+                    "Output ONLY a raw JSON array. No markdown, no explanation."
+                ),
+                messages=[{"role": "user", "content": f"Task: {task}"}],
+            )
+            text = next((b.text for b in response.content if b.type == "text"), "[]")
+            # Strip markdown code fences if present
+            text = text.strip()
+            m = re.search(r'\[.*\]', text, re.DOTALL)
+            if m:
+                text = m.group(0)
+            plan = json.loads(text)
+            return plan if isinstance(plan, list) else []
+        except Exception:
+            return []
 
     async def run(self, task: str):
         self._running = True
@@ -101,7 +101,23 @@ class BrowserAgent:
         self._last_page_state_step = -1
         self._cached_page_state = None
         self._url_history = []
-        self.messages = [{"role": "user", "content": task}]
+
+        # ── Hierarchical planning ────────────────────────────────────
+        plan = await self._create_plan(task)
+
+        if plan:
+            await self.send_event({"type": "plan", "steps": plan})
+            plan_text = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(plan))
+            self.messages = [{
+                "role": "user",
+                "content": (
+                    f"Task: {task}\n\n"
+                    f"Your plan:\n{plan_text}\n\n"
+                    "Now execute this plan step by step."
+                ),
+            }]
+        else:
+            self.messages = [{"role": "user", "content": task}]
 
         await self.send_event({"type": "thought", "content": f"Starting task: {task}"})
 
@@ -109,19 +125,6 @@ class BrowserAgent:
             while self._running:
                 self._step += 1
                 await self.send_event({"type": "step", "step": self._step})
-
-                # ── Step-back reflection every REFLECT_EVERY steps ──────────
-                if await self._should_reflect():
-                    reflection = await self._reflect(task)
-                    await self.send_event({
-                        "type": "reflection",
-                        "content": reflection,
-                        "step": self._step,
-                    })
-                    self.messages.append({
-                        "role": "user",
-                        "content": f"[Self-reflection at step {self._step}]: {reflection}",
-                    })
 
                 # ── Max steps guard ─────────────────────────────────────────
                 if self._step > MAX_STEPS:
@@ -222,7 +225,7 @@ class BrowserAgent:
 
                 if tool_results:
                     self.messages.append({"role": "user", "content": tool_results})
-                    await self._maybe_compress_context()
+                    self._maybe_compress_context()
 
                 # ── Stuck detection ─────────────────────────────────────────
                 if len(self._url_history) >= 4:
@@ -275,7 +278,7 @@ class BrowserAgent:
                         "type": "image",
                         "source": {
                             "type": "base64",
-                            "media_type": "image/png",
+                            "media_type": "image/jpeg",
                             "data": state["screenshot"],
                         },
                     },
@@ -330,20 +333,18 @@ class BrowserAgent:
             "content": json.dumps(data),
         }
 
-    async def _maybe_compress_context(self):
+    def _maybe_compress_context(self):
         context_size = sum(len(json.dumps(m, default=str)) for m in self.messages)
         if context_size < COMPRESS_THRESHOLD:
             return
 
         screenshot_count = 0
-        new_messages = []
-
+        # Walk backwards to keep the most recent screenshots
         for msg in reversed(self.messages):
             if msg["role"] == "user":
                 content = msg.get("content", [])
                 if isinstance(content, list):
-                    new_content = []
-                    for block in content:
+                    for i, block in enumerate(content):
                         if isinstance(block, dict) and block.get("type") == "tool_result":
                             tr_content = block.get("content", "")
                             if isinstance(tr_content, list):
@@ -359,12 +360,9 @@ class BrowserAgent:
                                             b for b in tr_content
                                             if isinstance(b, dict) and b.get("type") == "text"
                                         ]
-                                        tr_content = text_blocks + [
-                                            {"type": "text", "text": "[screenshot removed]"}
-                                        ]
-                                        block = {**block, "content": tr_content}
-                            new_content.append(block)
-                    msg = {**msg, "content": new_content}
-            new_messages.insert(0, msg)
-
-        self.messages = new_messages
+                                        content[i] = {
+                                            **block,
+                                            "content": text_blocks + [
+                                                {"type": "text", "text": "[screenshot removed]"}
+                                            ],
+                                        }

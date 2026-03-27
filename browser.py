@@ -16,10 +16,17 @@ class BrowserManager:
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
             headless=headless,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-extensions",
+                "--disable-background-timer-throttling",
+            ],
         )
         self.context = await self.browser.new_context(
             viewport={"width": 1280, "height": 800},
+            device_scale_factor=1,
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -38,7 +45,11 @@ class BrowserManager:
             await self.playwright.stop()
 
     async def screenshot(self) -> str:
-        data = await self.page.screenshot(type="png", full_page=False)
+        data = await self.page.screenshot(
+            type="jpeg",
+            quality=60,
+            full_page=False,
+        )
         return base64.b64encode(data).decode("utf-8")
 
     async def get_page_state(self) -> dict:
