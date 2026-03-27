@@ -30,22 +30,27 @@ class BrowserManager:
             args=[
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu",
                 "--disable-extensions",
                 "--disable-background-timer-throttling",
+                "--disable-renderer-backgrounding",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-ipc-flooding-protection",
             ],
         )
         self._context = await self._browser.new_context(
             viewport={"width": self._cfg.viewport_width, "height": self._cfg.viewport_height},  # type: ignore[arg-type]
-            device_scale_factor=1,
+            device_scale_factor=2,
             user_agent=self._cfg.user_agent,
         )
         self._page = await self._context.new_page()
         await self._page.goto("about:blank")
 
         # Wire up composed helpers
-        self.actions = BrowserActions(self._page)
         self.page_state = PageStateExtractor(self._page)
+        self.actions = BrowserActions(
+            self._page,
+            on_page_change=self.page_state.invalidate_cache,
+        )
 
         logger.info("Browser started (headless=%s)", self._cfg.headless)
 

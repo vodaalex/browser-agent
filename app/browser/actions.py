@@ -7,13 +7,19 @@ from app.log import logger
 
 class BrowserActions:
 
-    def __init__(self, page: Page):
+    def __init__(self, page: Page, on_page_change=None):
         self._page = page
+        self._on_page_change = on_page_change  # called after actions that change the page
+
+    def _notify_page_change(self):
+        if self._on_page_change:
+            self._on_page_change()
 
     async def navigate(self, url: str) -> dict:
         try:
             await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             await self._wait_for_stable()
+            self._notify_page_change()
             return {"success": True, "url": self._page.url}
         except Exception as e:
             logger.warning("Navigate failed: %s", e)
@@ -23,6 +29,7 @@ class BrowserActions:
         try:
             await self._page.mouse.click(x, y)
             await asyncio.sleep(0.7)
+            self._notify_page_change()
             return {"success": True}
         except Exception as e:
             logger.warning("Click failed: %s", e)

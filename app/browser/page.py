@@ -10,6 +10,12 @@ class PageStateExtractor:
 
     def __init__(self, page: Page):
         self._page = page
+        self._cached_elements: list = []
+        self._cached_url: str = ""
+
+    def invalidate_cache(self):
+        self._cached_url = ""
+        self._cached_elements = []
 
     async def screenshot(self) -> str:
         data = await self._page.screenshot(type="jpeg", quality=60, full_page=False)
@@ -18,11 +24,15 @@ class PageStateExtractor:
     async def get_page_state(self) -> dict:
         await self._auto_dismiss_popups()
         screenshot_b64 = await self.screenshot()
-        elements = await self._get_accessibility_tree()
+        current_url = self._page.url
+        # Re-extract a11y tree only when URL changed
+        if current_url != self._cached_url:
+            self._cached_elements = await self._get_accessibility_tree()
+            self._cached_url = current_url
         return {
             "screenshot": screenshot_b64,
-            "elements": elements,
-            "url": self._page.url,
+            "elements": self._cached_elements,
+            "url": current_url,
         }
 
     # ── Private helpers ──────────────────────────────────────────
