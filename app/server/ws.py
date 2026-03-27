@@ -1,46 +1,20 @@
+"""WebSocket endpoint — bridges the frontend UI with the AgentExecutor."""
+
+from __future__ import annotations
+
 import asyncio
-import os
-from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, Response
-from fastapi.staticfiles import StaticFiles
+from fastapi import WebSocket, WebSocketDisconnect
 
-load_dotenv()
-
-from browser import BrowserManager
-from agent import BrowserAgent
-
-browser = BrowserManager()
+from app.log import logger
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await browser.start()
-    print("Browser started.")
-    yield
-    await browser.stop()
-    print("Browser stopped.")
-
-
-app = FastAPI(lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
-@app.get("/")
-async def index():
-    return FileResponse("static/index.html")
-
-
-@app.get("/favicon.ico")
-async def favicon():
-    return Response(status_code=204)
-
-
-@app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+
+    # Lazy import to avoid circular dependency at module level
+    from app.server.app import browser
+    from app.agent.executor import AgentExecutor
 
     user_reply_queue: asyncio.Queue[str] = asyncio.Queue()
     agent_task: asyncio.Task | None = None
@@ -54,7 +28,7 @@ async def websocket_endpoint(websocket: WebSocket):
     async def wait_for_user() -> str:
         return await user_reply_queue.get()
 
-    agent = BrowserAgent(
+    agent = AgentExecutor(
         browser=browser,
         send_event=send_event,
         wait_for_user=wait_for_user,
@@ -78,6 +52,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     user_reply_queue.get_nowait()
 
                 task_content = data.get("content", "")
+                logger.info("New task: %s", task_content[:80])
                 agent_task = asyncio.create_task(agent.run(task_content))
 
             elif msg_type == "user_reply":
@@ -94,9 +69,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 await send_event({"type": "error", "message": "Stopped by user."})
 
     except WebSocketDisconnect:
-        pass
-    except Exception:
-        pass
+        logger.info("WebSocket disconnected")
+    except Exception as e:
+        logger.error("WebSocket error: %s", e)
     finally:
         if agent_task and not agent_task.done():
             agent_task.cancel()
@@ -105,14 +80,3 @@ async def websocket_endpoint(websocket: WebSocket):
             except asyncio.CancelledError:
                 pass
 
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-        log_level="info",
-    )
