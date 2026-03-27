@@ -64,9 +64,9 @@ class BrowserActions:
 
     async def _wait_for_stable(self):
         try:
-            await self._page.wait_for_load_state("networkidle", timeout=4_000)  # было 8000
+            await self._page.wait_for_load_state("networkidle", timeout=3_000)
         except Exception:
-            pass
+            await asyncio.sleep(1.0)
 
 
 

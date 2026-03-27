@@ -106,12 +106,18 @@ class AgentExecutor:
                     tool_name = block.name
                     tool_input = block.input
 
-                    await self.send_event({
-                        "type": "action",
-                        "tool": tool_name,
-                        "description": ToolDispatcher.describe(tool_name, tool_input),
-                        "args": tool_input,
-                    })
+                    # task_complete has no action item — only the final complete event
+                    if tool_name != "task_complete":
+                        action_event: dict = {
+                            "type": "action",
+                            "tool": tool_name,
+                            "description": ToolDispatcher.describe(tool_name, tool_input),
+                            "args": tool_input,
+                        }
+                        # Attach current URL for page-observation actions
+                        if tool_name in ("get_page_state", "screenshot"):
+                            action_event["url"] = self.dispatcher.current_url
+                        await self.send_event(action_event)
 
                     # ── task_complete ─────────────────────────────
                     if tool_name == "task_complete":

@@ -64,6 +64,14 @@ class ToolDispatcher:
         self._cached_page_state = None
 
     @property
+    def current_url(self) -> str:
+        """Current browser URL (empty string if unavailable)."""
+        try:
+            return self._browser.page.url
+        except Exception:
+            return ""
+
+    @property
     def page_changes_on(self) -> frozenset[str]:
         """Tools that do NOT represent page observation (used for action_result events)."""
         return frozenset({"navigate", "click", "type_text", "press_key", "scroll", "wait"})

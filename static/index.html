@@ -55,6 +55,11 @@
       background: var(--surface);
       border-right: 1px solid var(--border);
       box-shadow: 2px 0 16px rgba(0,0,0,0.05);
+      transition: box-shadow 0.2s ease;
+    }
+
+    .shell.scanning {
+      box-shadow: 0 0 0 2px #8b5cf6, 0 0 20px rgba(139, 92, 246, 0.15);
     }
 
     /* ── Header ── */
@@ -263,6 +268,13 @@
       font-style: italic;
       font-weight: 400;
       color: var(--text-2);
+    }
+
+    .ri-domain {
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--text-3);
+      margin-left: 4px;
     }
 
     /* Tag pill */
@@ -751,30 +763,60 @@
         setStatus('acting', 'Acting');
         const meta = toolMeta(ev.tool);
         const desc = ev.description || ev.tool;
-        let argsHtml = '';
-        if (ev.args && Object.keys(ev.args).length) {
-          const trimmed = {};
-          for (const [k, v] of Object.entries(ev.args)) {
-            trimmed[k] = typeof v === 'string' && v.length > 80 ? v.slice(0, 77) + '…' : v;
-          }
-          argsHtml = `<div class="args-block">${esc(JSON.stringify(trimmed, null, 2))}</div>`;
+        const isPageState = ev.tool === 'get_page_state' || ev.tool === 'screenshot';
+
+        // Scanning pulse on shell when agent observes the page
+        if (isPageState) {
+          const shell = document.querySelector('.shell');
+          shell.classList.add('scanning');
+          setTimeout(() => shell.classList.remove('scanning'), 600);
         }
-        const body = `
-          <div class="detail-row">
-            <span class="detail-key">tool</span>
-            <span class="detail-val">${esc(ev.tool)}</span>
-          </div>${argsHtml}`;
-        // Groupable tools: wait and get_page_state
-        const groupKey = (ev.tool === 'wait') ? 'wait'
-          : (ev.tool === 'get_page_state' || ev.tool === 'screenshot') ? 'get_page_state'
+
+        // Build title — for page state include domain as soft suffix
+        let titleHtml = esc(desc);
+        let baseTitle = desc;
+        if (isPageState && ev.url) {
+          let domain = ev.url;
+          try { domain = new URL(ev.url).hostname; } catch {}
+          if (domain && domain !== 'about:blank') {
+            titleHtml = `Analyzing page <span class="ri-domain">${esc(domain)}</span>`;
+            baseTitle = 'Analyzing page';
+          }
+        }
+
+        // Build body — richer for page-state, standard for other tools
+        let body;
+        if (isPageState) {
+          const urlRow = ev.url
+            ? `<div class="detail-row"><span class="detail-key">url</span><span class="detail-val">${esc(ev.url)}</span></div>`
+            : '';
+          body = urlRow +
+            `<div class="detail-row"><span class="detail-key">action</span>` +
+            `<span class="detail-val">screenshot + a11y tree (25 elements)</span></div>`;
+        } else {
+          let argsHtml = '';
+          if (ev.args && Object.keys(ev.args).length) {
+            const trimmed = {};
+            for (const [k, v] of Object.entries(ev.args)) {
+              trimmed[k] = typeof v === 'string' && v.length > 80 ? v.slice(0, 77) + '…' : v;
+            }
+            argsHtml = `<div class="args-block">${esc(JSON.stringify(trimmed, null, 2))}</div>`;
+          }
+          body = `<div class="detail-row"><span class="detail-key">tool</span>` +
+            `<span class="detail-val">${esc(ev.tool)}</span></div>${argsHtml}`;
+        }
+
+        const groupKey = ev.tool === 'wait' ? 'wait'
+          : isPageState ? 'get_page_state'
           : null;
+
         addItem({
           type: 'action',
           tool: ev.tool,
           dotClass: meta.dot,
           tag: meta.tag,
-          title: esc(desc),
-          baseTitle: desc,
+          title: titleHtml,
+          baseTitle,
           bodyHtml: body,
           collapsible: true,
           collapsed: true,
