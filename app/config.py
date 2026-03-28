@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     # ── LLM ──────────────────────────────────────────────────────
     anthropic_api_key: str = ""
     model_name: str = "claude-sonnet-4-5"
+    planner_model_name: str = "claude-haiku-4-5-20251001"
     max_tokens: int = 1500
 
     # ── Agent ────────────────────────────────────────────────────

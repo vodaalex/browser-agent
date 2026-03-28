@@ -35,6 +35,7 @@ class BrowserManager:
                 "--disable-renderer-backgrounding",
                 "--disable-backgrounding-occluded-windows",
                 "--disable-ipc-flooding-protection",
+                "--js-flags=--expose-gc",
             ],
         )
         self._context = await self._browser.new_context(

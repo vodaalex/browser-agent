@@ -12,6 +12,7 @@ class PageStateExtractor:
         self._page = page
         self._cached_elements: list = []
         self._cached_url: str = ""
+        self._call_count: int = 0
 
     def invalidate_cache(self):
         self._cached_url = ""
@@ -19,9 +20,19 @@ class PageStateExtractor:
 
     async def screenshot(self) -> str:
         data = await self._page.screenshot(type="jpeg", quality=80, full_page=False)
-        return base64.b64encode(data).decode("utf-8")
+        b64 = base64.b64encode(data).decode("utf-8")
+        del data
+        return b64
 
     async def get_page_state(self) -> dict:
+        self._call_count += 1
+        # Periodically nudge JS GC to keep renderer memory stable
+        if self._call_count % 10 == 0:
+            try:
+                await self._page.evaluate("() => { if (window.gc) window.gc(); }")
+            except Exception:
+                pass
+
         await self._auto_dismiss_popups()
         screenshot_b64 = await self.screenshot()
         current_url = self._page.url
@@ -39,12 +50,56 @@ class PageStateExtractor:
 
     async def _auto_dismiss_popups(self):
         try:
-            overlay = await self._page.query_selector(
-                '[role="dialog"]:visible, .modal:visible, '
-                '[class*="cookie"]:visible, [class*="consent"]:visible, '
-                '[class*="popup"]:visible, [class*="overlay"]:visible'
-            )
-            if overlay and await overlay.is_visible():
+            dismissed = await self._page.evaluate("""() => {
+                const closeTexts = ['×', '✕', '✗', 'X', 'Close', 'Закрыть',
+                                   'Нет, спасибо', 'Нет', 'Отмена', 'Пропустить',
+                                   'Не сейчас', 'Skip', 'Cancel', 'Dismiss'];
+                const allElements = document.querySelectorAll(
+                    'button, [role="button"], a, span, div'
+                );
+                for (const el of allElements) {
+                    if (!el.offsetParent && el.tagName !== 'BODY') continue;
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) continue;
+                    const text = (el.innerText || el.getAttribute('aria-label') || '').trim();
+                    const isCloseBtn = closeTexts.some(t =>
+                        text === t || text.toLowerCase() === t.toLowerCase()
+                    );
+                    if (!isCloseBtn) continue;
+                    let parent = el.parentElement;
+                    let isOverlay = false;
+                    for (let i = 0; i < 5; i++) {
+                        if (!parent) break;
+                        const ps = window.getComputedStyle(parent);
+                        const zi = parseInt(ps.zIndex) || 0;
+                        if (zi > 100 || ps.position === 'fixed') {
+                            isOverlay = true;
+                            break;
+                        }
+                        parent = parent.parentElement;
+                    }
+                    if (isOverlay) {
+                        el.click();
+                        return true;
+                    }
+                }
+                return false;
+            }""")
+            if dismissed:
+                await asyncio.sleep(0.4)
+                return
+            # Fallback — Escape for role="dialog" overlays
+            has_dialog = await self._page.evaluate("""() => {
+                const dialogs = document.querySelectorAll(
+                    '[role="dialog"], [role="alertdialog"]'
+                );
+                for (const d of dialogs) {
+                    const rect = d.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) return true;
+                }
+                return false;
+            }""")
+            if has_dialog:
                 await self._page.keyboard.press("Escape")
                 await asyncio.sleep(0.3)
         except Exception:
@@ -53,54 +108,46 @@ class PageStateExtractor:
     async def _get_accessibility_tree(self) -> list:
         elements: list[dict] = []
         try:
-            handles = await self._page.query_selector_all(
-                'button, a, input, select, textarea, [role="button"], '
-                '[role="link"], [role="menuitem"], [role="tab"], '
-                '[role="checkbox"], [role="radio"], [tabindex]'
-            )
-            for handle in handles[:40]:
-                try:
-                    el_info = await handle.evaluate("""el => {
-                        const r = el.getBoundingClientRect();
-                        if (r.x < -100 || r.y < -100 || r.width === 0 || r.height === 0)
-                            return null;
-                        const text = (
-                            el.innerText ||
-                            el.getAttribute('aria-label') ||
-                            el.getAttribute('placeholder') || ''
-                        ).slice(0, 40).trim();
-                        if (!text) return null;
-                        return {
-                            tag: el.tagName.toLowerCase(),
-                            text: text,
-                            inputType: el.getAttribute('type') || '',
-                            rect: {
-                                x: Math.round(r.x),
-                                y: Math.round(r.y),
-                                w: Math.round(r.width),
-                                h: Math.round(r.height)
-                            }
-                        };
-                    }""")
-                    if not el_info:
-                        continue
-
-                    el_data: dict = {
-                        "type": el_info["tag"],
-                        "text": el_info["text"],
-                        "bbox": [
-                            el_info["rect"]["x"],
-                            el_info["rect"]["y"],
-                            el_info["rect"]["w"],
-                            el_info["rect"]["h"],
-                        ],
-                    }
-                    if el_info["inputType"]:
-                        el_data["input_type"] = el_info["inputType"]
-                    elements.append(el_data)
-                except Exception:
-                    continue
+            results = await self._page.evaluate("""() => {
+                const SELECTORS = 'button, a, input, select, textarea, ' +
+                    '[role="button"], [role="link"], [role="menuitem"], ' +
+                    '[role="tab"], [role="checkbox"], [role="radio"]';
+                const vh = window.innerHeight;
+                const vw = window.innerWidth;
+                const elements = [];
+                for (const el of document.querySelectorAll(SELECTORS)) {
+                    if (elements.length >= 30) break;
+                    const r = el.getBoundingClientRect();
+                    if (r.x < -50 || r.y < -50 || r.y > vh + 50) continue;
+                    if (r.x > vw + 50) continue;
+                    if (r.width === 0 || r.height === 0) continue;
+                    const text = (
+                        el.innerText ||
+                        el.getAttribute('aria-label') ||
+                        el.getAttribute('placeholder') || ''
+                    ).slice(0, 40).trim();
+                    if (!text) continue;
+                    elements.push({
+                        tag: el.tagName.toLowerCase(),
+                        text: text,
+                        inputType: el.getAttribute('type') || '',
+                        x: Math.round(r.x),
+                        y: Math.round(r.y),
+                        w: Math.round(r.width),
+                        h: Math.round(r.height),
+                    });
+                }
+                return elements;
+            }""")
+            for el_info in results:
+                el_data: dict = {
+                    "type": el_info["tag"],
+                    "text": el_info["text"],
+                    "bbox": [el_info["x"], el_info["y"], el_info["w"], el_info["h"]],
+                }
+                if el_info["inputType"]:
+                    el_data["input_type"] = el_info["inputType"]
+                elements.append(el_data)
         except Exception:
             logger.warning("Failed to extract accessibility tree")
         return elements
-

@@ -23,12 +23,16 @@ class BrowserActions:
             return {"success": True, "url": self._page.url}
         except Exception as e:
             logger.warning("Navigate failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {
+                "success": False,
+                "error": str(e),
+                "suggestion": "Try navigating to the homepage instead, or ask_user() for help",
+            }
 
     async def click(self, x: int, y: int) -> dict:
         try:
             await self._page.mouse.click(x, y)
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(0.8)
             self._notify_page_change()
             return {
                 "success": True,
@@ -37,7 +41,11 @@ class BrowserActions:
             }
         except Exception as e:
             logger.warning("Click failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {
+                "success": False,
+                "error": str(e),
+                "suggestion": "Element may be outside viewport. Try scroll() first, then click again",
+            }
 
     async def type_text(self, text: str) -> dict:
         try:
@@ -83,7 +91,11 @@ class BrowserActions:
             return {"success": True, "url": self._page.url, "typed": text}
         except Exception as e:
             logger.warning("type_and_submit failed: %s", e)
-            return {"success": False, "error": str(e)}
+            return {
+                "success": False,
+                "error": str(e),
+                "suggestion": "Click the input field first with click(), then use type_text()",
+            }
 
     # ── Private ──────────────────────────────────────────────────
 

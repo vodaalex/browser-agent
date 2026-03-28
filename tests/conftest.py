@@ -21,11 +21,12 @@ def mock_browser():
 
     # Mock actions
     browser.actions.navigate.return_value = {"success": True, "url": "https://example.com"}
-    browser.actions.click.return_value = {"success": True}
+    browser.actions.click.return_value = {"success": True, "url": "https://example.com", "hint": "Call get_page_state() to see what changed"}
     browser.actions.type_text.return_value = {"success": True}
     browser.actions.press_key.return_value = {"success": True}
     browser.actions.scroll.return_value = {"success": True}
     browser.actions.wait.return_value = {"success": True}
+    browser.actions.type_and_submit.return_value = {"success": True, "url": "https://example.com", "typed": "test"}
 
     return browser
 

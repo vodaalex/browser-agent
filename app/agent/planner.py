@@ -4,6 +4,7 @@ import json
 import re
 from typing import TYPE_CHECKING
 
+from app.config import Settings, settings
 from app.llm.prompts import PLANNER_SYSTEM_PROMPT
 from app.log import logger
 
@@ -13,8 +14,9 @@ if TYPE_CHECKING:
 
 class TaskPlanner:
 
-    def __init__(self, llm: LLMClient):
+    def __init__(self, llm: LLMClient, cfg: Settings | None = None):
         self._llm = llm
+        self._cfg = cfg or settings
 
     async def create_plan(self, task: str) -> list[str]:
         try:
@@ -22,6 +24,7 @@ class TaskPlanner:
                 messages=[{"role": "user", "content": f"Task: {task}"}],
                 system=PLANNER_SYSTEM_PROMPT,
                 max_tokens=300,
+                model_override=self._cfg.planner_model_name,
             )
             text = next(
                 (b.text for b in response.content if b.type == "text"), "[]"

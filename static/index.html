@@ -55,11 +55,6 @@
       background: var(--surface);
       border-right: 1px solid var(--border);
       box-shadow: 2px 0 16px rgba(0,0,0,0.05);
-      transition: box-shadow 0.2s ease;
-    }
-
-    .shell.scanning {
-      box-shadow: 0 0 0 2px #8b5cf6, 0 0 20px rgba(139, 92, 246, 0.15);
     }
 
     /* ── Header ── */
@@ -198,12 +193,13 @@
 
     /* Final answer panel */
     .final-answer {
-      flex: 1;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      max-height: 50vh;
       overflow-y: auto;
       padding: 16px;
       scrollbar-width: thin;
       scrollbar-color: var(--border) transparent;
-      min-height: 0;
     }
     .final-answer::-webkit-scrollbar { width: 3px; }
     .final-answer::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
@@ -222,6 +218,7 @@
       padding: 10px 0 0;
       scrollbar-width: thin;
       scrollbar-color: var(--border) transparent;
+      transition: opacity 0.2s ease;
     }
     .roadmap-wrap::-webkit-scrollbar { width: 3px; }
     .roadmap-wrap::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
@@ -840,11 +837,11 @@
         const desc = ev.description || ev.tool;
         const isPageState = ev.tool === 'get_page_state' || ev.tool === 'screenshot';
 
-        // Scanning pulse on shell when agent observes the page
+        // Scanning pulse on roadmap when agent observes the page
         if (isPageState) {
-          const shell = document.querySelector('.shell');
-          shell.classList.add('scanning');
-          setTimeout(() => shell.classList.remove('scanning'), 600);
+          const wrap = document.getElementById('roadmapWrap');
+          wrap.style.opacity = '0.7';
+          setTimeout(() => { wrap.style.opacity = '1'; }, 400);
         }
 
         // Build title — for page state include domain as soft suffix
@@ -956,16 +953,6 @@
         showThinking(false);
         setStatus('complete', 'Complete');
         enableInput();
-
-        // Add final step to roadmap (visible when expanded)
-        addItem({
-          dotClass: 'dot-complete',
-          tag: 'complete',
-          title: 'Task complete',
-          bodyHtml: `<div class="report-text">${esc(ev.report)}</div>`,
-          collapsible: false,
-          collapsed: false,
-        });
 
         // Collapse roadmap → show toggle + final answer
         const elapsed = Math.round((Date.now() - (taskStartTime || Date.now())) / 1000);

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from typing import TYPE_CHECKING, Callable, Awaitable
 from urllib.parse import urlparse
 
@@ -28,11 +30,19 @@ class ToolDispatcher:
     def __init__(self, browser: BrowserManager):
         self._browser = browser
         self._registry: dict[str, Handler] = self._build_registry()
+        self._last_page_state_time: float = 0.0
 
     # ── Public API ───────────────────────────────────────────────
 
     async def dispatch(self, name: str, args: dict, *, step: int = 0) -> list | str:
         """Execute a tool by name and return its result."""
+        if name == "get_page_state":
+            now = time.monotonic()
+            elapsed = now - self._last_page_state_time
+            if elapsed < 0.5 and self._last_page_state_time > 0:
+                await asyncio.sleep(0.5 - elapsed)
+            self._last_page_state_time = time.monotonic()
+
         handler = self._registry.get(name)
         if handler is None:
             logger.warning("Unknown tool requested: %s", name)

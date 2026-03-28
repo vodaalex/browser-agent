@@ -18,15 +18,17 @@ class LLMClient:
         system: str,
         tools: list[dict] | None = None,
         max_tokens: int | None = None,
+        model_override: str | None = None,
     ):
+        model = model_override or self.model
         kwargs: dict = {
-            "model": self.model,
+            "model": model,
             "max_tokens": max_tokens or self.max_tokens,
             "system": system,
             "messages": messages,
         }
         if tools:
             kwargs["tools"] = tools
-        logger.debug("LLM request: model=%s, messages=%d", self.model, len(messages))
+        logger.debug("LLM request: model=%s, messages=%d", model, len(messages))
         return await self._client.messages.create(**kwargs)
 
