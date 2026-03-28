@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import time
 from typing import TYPE_CHECKING, Callable, Awaitable
 from urllib.parse import urlparse
 
@@ -30,19 +28,11 @@ class ToolDispatcher:
     def __init__(self, browser: BrowserManager):
         self._browser = browser
         self._registry: dict[str, Handler] = self._build_registry()
-        self._last_page_state_time: float = 0.0
 
     # ── Public API ───────────────────────────────────────────────
 
     async def dispatch(self, name: str, args: dict, *, step: int = 0) -> list | str:
         """Execute a tool by name and return its result."""
-        if name == "get_page_state":
-            now = time.monotonic()
-            elapsed = now - self._last_page_state_time
-            if elapsed < 0.5 and self._last_page_state_time > 0:
-                await asyncio.sleep(0.5 - elapsed)
-            self._last_page_state_time = time.monotonic()
-
         handler = self._registry.get(name)
         if handler is None:
             logger.warning("Unknown tool requested: %s", name)
@@ -73,7 +63,7 @@ class ToolDispatcher:
     @property
     def page_changes_on(self) -> frozenset[str]:
         """Tools that trigger action_result events (non-observation tools)."""
-        return frozenset({"navigate", "click", "type_text", "press_key", "scroll", "wait", "type_and_submit"})
+        return frozenset({"navigate", "click", "type_text", "press_key", "scroll", "wait", "type_and_submit", "go_back"})
 
     # ── Action descriptions (human-readable) ─────────────────────
 
@@ -93,6 +83,8 @@ class ToolDispatcher:
             text = args.get("text", "")
             preview = text[:25] + "…" if len(text) > 25 else text
             return f'Typing "{preview}"'
+        elif tool == "get_elements":
+            return "Reading page elements"
         elif tool == "get_page_state":
             return "Analyzing page state"
         elif tool == "type_and_submit":
@@ -107,6 +99,8 @@ class ToolDispatcher:
             return f"Scrolling {direction}"
         elif tool == "press_key":
             return f"Pressing {args.get('key', '')}"
+        elif tool == "go_back":
+            return "Going back"
         elif tool == "ask_user":
             q = args.get("question", "")
             return f"Asking: {q[:40]}…" if len(q) > 40 else f"Asking: {q}"
@@ -118,6 +112,7 @@ class ToolDispatcher:
 
     def _build_registry(self) -> dict[str, Handler]:
         return {
+            "get_elements": handlers.handle_get_elements,
             "get_page_state": handlers.handle_page_state,
             "navigate": handlers.handle_navigate,
             "click": handlers.handle_click,
@@ -126,4 +121,5 @@ class ToolDispatcher:
             "scroll": handlers.handle_scroll,
             "wait": handlers.handle_wait,
             "type_and_submit": handlers.handle_type_and_submit,
+            "go_back": handlers.handle_go_back,
         }

@@ -110,11 +110,11 @@ class ContextManager:
                         }
 
         # Truncate middle tool results when conversation is long
-        if len(self.messages) > 24:
+        if len(self.messages) > 12:
             preserved = self.messages[:2]   # task + plan always kept
-            recent = self.messages[-16:]    # last 16 messages always kept in full
+            recent = self.messages[-10:]    # last 10 messages kept in full
             middle = []
-            for msg in self.messages[2:-16]:
+            for msg in self.messages[2:-10]:
                 if msg["role"] == "user":
                     content = msg.get("content", [])
                     if isinstance(content, list):
@@ -126,8 +126,25 @@ class ContextManager:
                             ):
                                 raw = block.get("content", "")
                                 if isinstance(raw, str) and len(raw) > 200:
+                                    # JSON string result (get_elements etc.)
                                     raw = raw[:100] + "...[truncated]"
-                                new_content.append({**block, "content": raw})
+                                    new_content.append({**block, "content": raw})
+                                elif isinstance(raw, list):
+                                    # Multimodal list (get_page_state): extract URL, drop elements + screenshot
+                                    url_text = ""
+                                    for b in raw:
+                                        if isinstance(b, dict) and b.get("type") == "text":
+                                            try:
+                                                d = json.loads(b["text"])
+                                                url_text = d.get("url", "")
+                                            except Exception:
+                                                pass
+                                    new_content.append({
+                                        **block,
+                                        "content": [{"type": "text", "text": json.dumps({"url": url_text, "elements": "[removed]"})}],
+                                    })
+                                else:
+                                    new_content.append(block)
                             else:
                                 new_content.append(block)
                         middle.append({**msg, "content": new_content})

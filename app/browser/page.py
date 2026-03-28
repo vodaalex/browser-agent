@@ -27,6 +27,27 @@ class PageStateExtractor:
         del data
         return b64
 
+    async def get_elements(self) -> dict:
+        """Fast observation: elements + URL, no screenshot."""
+        self._call_count += 1
+        if self._call_count % 10 == 0:
+            try:
+                await self._page.evaluate("() => { if (window.gc) window.gc(); }")
+            except Exception:
+                pass
+        current_url = self._page.url
+        dom_hash = await self._get_dom_hash()
+        self._last_dom_hash = dom_hash
+        if current_url != self._cached_url or dom_hash != self._cached_dom_hash:
+            self._cached_elements = await self._get_accessibility_tree()
+            self._cached_url = current_url
+            self._cached_dom_hash = dom_hash
+        return {
+            "elements": self._cached_elements,
+            "url": current_url,
+            "dom_hash": dom_hash,
+        }
+
     async def get_page_state(self) -> dict:
         self._call_count += 1
         # Periodically nudge JS GC to keep renderer memory stable
@@ -150,7 +171,7 @@ class PageStateExtractor:
                         el.innerText ||
                         el.getAttribute('aria-label') ||
                         el.getAttribute('placeholder') || ''
-                    ).slice(0, 40).trim();
+                    ).slice(0, 25).trim();
                     if (!text) continue;
                     const data = {
                         tag: el.tagName.toLowerCase(),
@@ -167,11 +188,11 @@ class PageStateExtractor:
                     for (let i = 0; i < 8; i++) {
                         if (!parent) break;
                         const role = parent.getAttribute('role') || '';
-                        const cls = parent.className || '';
+                        const ps = window.getComputedStyle(parent);
+                        const zi = parseInt(ps.zIndex) || 0;
                         if (role === 'dialog' || role === 'alertdialog' ||
-                            cls.includes('modal') || cls.includes('popup') ||
-                            cls.includes('overlay') || cls.includes('sheet') ||
-                            cls.includes('bottom-sheet') || cls.includes('drawer')) {
+                            (zi > 100 && ps.position === 'fixed') ||
+                            (zi > 100 && ps.position === 'absolute')) {
                             inModal = true;
                             break;
                         }
@@ -184,7 +205,7 @@ class PageStateExtractor:
                     }
                 }
                 // Modal elements first so they are never pushed out by background UI
-                return [...modalElements, ...regularElements].slice(0, 35);
+                return [...modalElements, ...regularElements].slice(0, 25);
             }""")
             for el_info in results:
                 el_data: dict = {

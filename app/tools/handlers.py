@@ -17,6 +17,16 @@ if TYPE_CHECKING:
 
 # ── Page observation ─────────────────────────────────────────────
 
+async def handle_get_elements(browser: BrowserManager, _args: dict) -> str:
+    """Fast observation — elements + URL, no screenshot."""
+    state = await browser.page_state.get_elements()
+    browser.page_state._last_dom_hash = state.get("dom_hash", "")
+    return json.dumps(
+        {"url": state["url"], "elements": state["elements"]},
+        ensure_ascii=False,
+    )
+
+
 async def handle_page_state(browser: BrowserManager, _args: dict) -> list:
     """Return screenshot + elements + URL as a multimodal content list."""
     state = await browser.page_state.get_page_state()
@@ -75,5 +85,10 @@ async def handle_wait(browser: BrowserManager, args: dict) -> str:
 
 async def handle_type_and_submit(browser: BrowserManager, args: dict) -> str:
     result = await browser.actions.type_and_submit(args["x"], args["y"], args["text"])
+    return json.dumps(result)
+
+
+async def handle_go_back(browser: BrowserManager, _args: dict) -> str:
+    result = await browser.actions.go_back()
     return json.dumps(result)
 

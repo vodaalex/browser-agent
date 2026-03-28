@@ -32,7 +32,7 @@ class BrowserActions:
     async def click(self, x: int, y: int) -> dict:
         try:
             await self._page.mouse.click(x, y)
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(0.4)
             self._notify_page_change()
             return {
                 "success": True,
@@ -97,13 +97,23 @@ class BrowserActions:
                 "suggestion": "Click the input field first with click(), then use type_text()",
             }
 
+    async def go_back(self) -> dict:
+        try:
+            await self._page.go_back(wait_until="domcontentloaded", timeout=10_000)
+            await self._wait_for_stable()
+            self._notify_page_change()
+            return {"success": True, "url": self._page.url}
+        except Exception as e:
+            logger.warning("go_back failed: %s", e)
+            return {"success": False, "error": str(e)}
+
     # ── Private ──────────────────────────────────────────────────
 
     async def _wait_for_stable(self):
         try:
-            await self._page.wait_for_load_state("networkidle", timeout=2_500)
+            await self._page.wait_for_load_state("networkidle", timeout=800)
         except Exception:
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(0.3)
 
 
 

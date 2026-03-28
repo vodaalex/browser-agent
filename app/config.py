@@ -7,11 +7,11 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     model_name: str = "claude-sonnet-4-5"
     planner_model_name: str = "claude-sonnet-4-5"
-    max_tokens: int = 1500
+    max_tokens: int = 800
 
     # ── Agent ────────────────────────────────────────────────────
     max_steps: int = 30
-    compress_threshold: int = 100_000
+    compress_threshold: int = 20_000
     max_screenshots_in_context: int = 2
 
     # ── Browser ──────────────────────────────────────────────────

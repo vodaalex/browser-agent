@@ -672,11 +672,13 @@
       case 'navigate':        return { dot: 'dot-navigate', tag: 'navigate' };
       case 'click':           return { dot: 'dot-click',    tag: 'click' };
       case 'type_text':       return { dot: 'dot-type',     tag: 'type' };
+      case 'get_elements':    return { dot: 'dot-observe',  tag: 'elements' };
       case 'get_page_state':  return { dot: 'dot-observe',  tag: 'page state' };
       case 'screenshot':      return { dot: 'dot-observe',  tag: 'screenshot' };
       case 'wait':            return { dot: 'dot-wait',     tag: 'wait' };
       case 'scroll':          return { dot: 'dot-wait',     tag: 'scroll' };
       case 'press_key':       return { dot: 'dot-wait',     tag: 'key' };
+      case 'go_back':         return { dot: 'dot-navigate', tag: 'back' };
       case 'ask_user':        return { dot: 'dot-ask',      tag: 'ask' };
       case 'task_complete':   return { dot: 'dot-complete', tag: 'complete' };
       default:                return { dot: 'dot-thought',  tag: tool };
@@ -835,7 +837,7 @@
         setStatus('acting', 'Acting');
         const meta = toolMeta(ev.tool);
         const desc = ev.description || ev.tool;
-        const isPageState = ev.tool === 'get_page_state' || ev.tool === 'screenshot';
+        const isPageState = ev.tool === 'get_page_state' || ev.tool === 'get_elements';
 
         // Scanning pulse on roadmap when agent observes the page
         if (isPageState) {

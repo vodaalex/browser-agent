@@ -1,5 +1,17 @@
 TOOL_DEFINITIONS = [
     {
+        "name": "get_elements",
+        "description": (
+            "Fast observation tool. Returns interactive elements with coordinates "
+            "and current URL — WITHOUT a screenshot. "
+            "Use this after most actions when you already understand the page layout. "
+            "Use get_page_state() instead only when you need to visually see the page "
+            "for the first time, read text content not present in elements, "
+            "or understand a complex visual layout."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
         "name": "get_page_state",
         "description": (
             "Primary observation tool. Returns: (1) screenshot as JPEG image, "
@@ -138,6 +150,16 @@ TOOL_DEFINITIONS = [
             },
             "required": ["x", "y", "text"],
         },
+    },
+    {
+        "name": "go_back",
+        "description": (
+            "Navigate back to the previous page in browser history. "
+            "Use this instead of navigate() when you want to return "
+            "to the page you came from. Faster and more reliable than "
+            "remembering and re-navigating to the previous URL."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "ask_user",

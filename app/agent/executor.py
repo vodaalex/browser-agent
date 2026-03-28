@@ -96,14 +96,6 @@ class AgentExecutor:
                 if response.stop_reason != "tool_use":
                     break
 
-                # ── Progress nudge every 10 steps ────────────────
-                if self._step > 0 and self._step % 10 == 0:
-                    self.context.append_user_guidance(
-                        f"Ты на шаге {self._step}. "
-                        "Коротко оцени: достиг ли прогресса к цели? "
-                        "Если нет — смени подход."
-                    )
-
                 # ── Process tool calls ───────────────────────────
                 tool_results = []
                 stop_after = False
@@ -154,7 +146,7 @@ class AgentExecutor:
                     )
 
                     # Track URL from page-state observations
-                    if tool_name == "get_page_state":
+                    if tool_name in ("get_page_state", "get_elements"):
                         self._track_url_from_result(result_content)
 
                     # Send action_result event for non-observation tools
@@ -217,18 +209,25 @@ class AgentExecutor:
         }
 
     def _track_url_from_result(self, result_content):
-        """Extract URL from a page-state result and record it for stuck detection."""
-        if isinstance(result_content, list):
+        """Extract URL from an observation result and record it for stuck detection."""
+        dom_hash = getattr(
+            self.dispatcher._browser.page_state, "_last_dom_hash", ""
+        )
+        # get_elements returns a plain JSON string
+        if isinstance(result_content, str):
+            try:
+                data = json.loads(result_content)
+                if "url" in data:
+                    self.context.track_state(data["url"], dom_hash)
+            except (json.JSONDecodeError, KeyError):
+                pass
+        # get_page_state returns a multimodal list with a text block
+        elif isinstance(result_content, list):
             for item in result_content:
                 if isinstance(item, dict) and item.get("type") == "text":
                     try:
                         data = json.loads(item["text"])
                         if "url" in data:
-                            dom_hash = getattr(
-                                self.dispatcher._browser.page_state,
-                                "_last_dom_hash",
-                                "",
-                            )
                             self.context.track_state(data["url"], dom_hash)
                     except (json.JSONDecodeError, KeyError):
                         pass
