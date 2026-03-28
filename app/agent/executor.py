@@ -36,6 +36,7 @@ class AgentExecutor:
 
         self._running = False
         self._step = 0
+        self._stuck_count = 0
 
     # ── Public API ───────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ class AgentExecutor:
         """Execute a browser task end-to-end."""
         self._running = True
         self._step = 0
+        self._stuck_count = 0
         self.context.reset()
         self.dispatcher.invalidate_cache()
 
@@ -93,6 +95,14 @@ class AgentExecutor:
 
                 if response.stop_reason != "tool_use":
                     break
+
+                # ── Progress nudge every 10 steps ────────────────
+                if self._step > 0 and self._step % 10 == 0:
+                    self.context.append_user_guidance(
+                        f"Ты на шаге {self._step}. "
+                        "Коротко оцени: достиг ли прогресса к цели? "
+                        "Если нет — смени подход."
+                    )
 
                 # ── Process tool calls ───────────────────────────
                 tool_results = []
@@ -164,14 +174,23 @@ class AgentExecutor:
                 if self.context.is_stuck():
                     await self.send_event({
                         "type": "thought",
-                        "content": "Detected: same page for 4+ observations. Asking for guidance.",
+                        "content": "Застрял на одном месте. Меняю подход.",
                     })
-                    await self.send_event({
-                        "type": "ask_user",
-                        "question": "I seem to be stuck on the same page. Can you help me proceed?",
-                    })
-                    answer = await self.wait_for_user()
-                    self.context.append_user_guidance(answer)
+                    self._stuck_count += 1
+                    if self._stuck_count >= 2:
+                        self._stuck_count = 0
+                        await self.send_event({
+                            "type": "ask_user",
+                            "question": "Я застрял дважды. Подскажи как продолжить?",
+                        })
+                        answer = await self.wait_for_user()
+                        self.context.append_user_guidance(answer)
+                    else:
+                        self.context.append_user_guidance(
+                            "Ты застрял — последние 5 наблюдений показали одно и то же. "
+                            "Попробуй кардинально другой подход к задаче. "
+                            "Не повторяй то что уже делал."
+                        )
 
                 if stop_after:
                     break
@@ -198,14 +217,19 @@ class AgentExecutor:
         }
 
     def _track_url_from_result(self, result_content):
-        """Extract URL from a page-state result and record it."""
+        """Extract URL from a page-state result and record it for stuck detection."""
         if isinstance(result_content, list):
             for item in result_content:
                 if isinstance(item, dict) and item.get("type") == "text":
                     try:
                         data = json.loads(item["text"])
                         if "url" in data:
-                            self.context.track_url(data["url"])
+                            dom_hash = getattr(
+                                self.dispatcher._browser.page_state,
+                                "_last_dom_hash",
+                                "",
+                            )
+                            self.context.track_state(data["url"], dom_hash)
                     except (json.JSONDecodeError, KeyError):
                         pass
 

@@ -6,11 +6,11 @@ class Settings(BaseSettings):
     # ── LLM ──────────────────────────────────────────────────────
     anthropic_api_key: str = ""
     model_name: str = "claude-sonnet-4-5"
-    planner_model_name: str = "claude-haiku-4-5-20251001"
+    planner_model_name: str = "claude-sonnet-4-5"
     max_tokens: int = 1500
 
     # ── Agent ────────────────────────────────────────────────────
-    max_steps: int = 25
+    max_steps: int = 30
     compress_threshold: int = 100_000
     max_screenshots_in_context: int = 2
 

@@ -123,6 +123,9 @@ TOOL_DEFINITIONS = [
             "Click an input field, type text, and press Enter to submit — "
             "all in a single step. Use for search boxes, forms, and any input "
             "where you need to type and immediately submit. "
+            "When looking for specific products or content on any website, "
+            "using this tool with a search box is faster and more reliable "
+            "than navigating through menus or categories. "
             "Provide the center coordinates of the input field. "
             "More efficient than calling click + type_text + press_key separately."
         ),

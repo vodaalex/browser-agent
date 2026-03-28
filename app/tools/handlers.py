@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 async def handle_page_state(browser: BrowserManager, _args: dict) -> list:
     """Return screenshot + elements + URL as a multimodal content list."""
     state = await browser.page_state.get_page_state()
+    # Persist dom_hash on extractor for executor to read during stuck tracking
+    browser.page_state._last_dom_hash = state.get("dom_hash", "")
     return [
         {
             "type": "image",

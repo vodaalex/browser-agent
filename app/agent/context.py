@@ -47,17 +47,23 @@ class ContextManager:
     def append_user_guidance(self, text: str):
         self.messages.append({"role": "user", "content": f"User guidance: {text}"})
 
-    # ── URL tracking & stuck detection ───────────────────────────
+    # ── State tracking & stuck detection ─────────────────────────
 
     def track_url(self, url: str):
-        self._url_history.append(url)
+        """Legacy alias — prefer track_state()."""
+        self.track_state(url)
+
+    def track_state(self, url: str, content_hash: str = ""):
+        """Track page state combining URL and visible content hash."""
+        state_key = f"{url}#{content_hash}"
+        self._url_history.append(state_key)
 
     def is_stuck(self) -> bool:
-        if len(self._url_history) >= 4:
-            recent = self._url_history[-4:]
-            if len(set(recent)) == 1 and recent[0] not in ("about:blank", ""):
+        if len(self._url_history) >= 5:
+            recent = self._url_history[-5:]
+            if len(set(recent)) == 1 and "about:blank" not in recent[0]:
                 self._url_history = []  # reset to avoid repeated trigger
-                logger.info("Stuck detected: same page for 4+ observations")
+                logger.info("Stuck detected: same state for 5+ observations")
                 return True
         return False
 

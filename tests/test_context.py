@@ -29,33 +29,44 @@ class TestInitFromPlan:
 
 class TestStuckDetection:
     def test_not_stuck_when_few_urls(self, ctx: ContextManager):
-        ctx.track_url("https://a.com")
-        ctx.track_url("https://a.com")
+        ctx.track_state("https://a.com")
+        ctx.track_state("https://a.com")
         assert ctx.is_stuck() is False
 
-    def test_stuck_after_4_same(self, ctx: ContextManager):
-        for _ in range(4):
-            ctx.track_url("https://a.com")
+    def test_stuck_after_5_same(self, ctx: ContextManager):
+        for _ in range(5):
+            ctx.track_state("https://a.com")
         assert ctx.is_stuck() is True
 
     def test_not_stuck_with_different_urls(self, ctx: ContextManager):
-        ctx.track_url("https://a.com")
-        ctx.track_url("https://b.com")
-        ctx.track_url("https://a.com")
-        ctx.track_url("https://c.com")
+        ctx.track_state("https://a.com")
+        ctx.track_state("https://b.com")
+        ctx.track_state("https://a.com")
+        ctx.track_state("https://c.com")
         assert ctx.is_stuck() is False
 
     def test_about_blank_never_stuck(self, ctx: ContextManager):
-        for _ in range(5):
-            ctx.track_url("about:blank")
+        for _ in range(6):
+            ctx.track_state("about:blank")
         assert ctx.is_stuck() is False
 
     def test_stuck_resets_history(self, ctx: ContextManager):
-        for _ in range(4):
-            ctx.track_url("https://a.com")
+        for _ in range(5):
+            ctx.track_state("https://a.com")
         assert ctx.is_stuck() is True
         # After stuck, history is reset — should not trigger again immediately
         assert ctx.is_stuck() is False
+
+    def test_content_hash_differentiates_same_url(self, ctx: ContextManager):
+        # Same URL but different DOM state should not be stuck
+        for i in range(5):
+            ctx.track_state("https://a.com", f"hash_{i}")
+        assert ctx.is_stuck() is False
+
+    def test_same_url_and_hash_triggers_stuck(self, ctx: ContextManager):
+        for _ in range(5):
+            ctx.track_state("https://a.com", "same_hash")
+        assert ctx.is_stuck() is True
 
 
 class TestCompression:

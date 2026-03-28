@@ -12,11 +12,14 @@ class PageStateExtractor:
         self._page = page
         self._cached_elements: list = []
         self._cached_url: str = ""
+        self._cached_dom_hash: str = ""
+        self._last_dom_hash: str = ""
         self._call_count: int = 0
 
     def invalidate_cache(self):
         self._cached_url = ""
         self._cached_elements = []
+        self._cached_dom_hash = ""
 
     async def screenshot(self) -> str:
         data = await self._page.screenshot(type="jpeg", quality=80, full_page=False)
@@ -33,22 +36,44 @@ class PageStateExtractor:
             except Exception:
                 pass
 
-        await self._auto_dismiss_popups()
         screenshot_b64 = await self.screenshot()
         current_url = self._page.url
-        # Re-extract a11y tree only when URL changed
-        if current_url != self._cached_url:
+        dom_hash = await self._get_dom_hash()
+        self._last_dom_hash = dom_hash
+        # Re-extract a11y tree when URL or DOM structure changed (modals, overlays)
+        if current_url != self._cached_url or dom_hash != self._cached_dom_hash:
             self._cached_elements = await self._get_accessibility_tree()
             self._cached_url = current_url
+            self._cached_dom_hash = dom_hash
         return {
             "screenshot": screenshot_b64,
             "elements": self._cached_elements,
             "url": current_url,
+            "dom_hash": dom_hash,
         }
 
     # ── Private helpers ──────────────────────────────────────────
 
+    async def _get_dom_hash(self) -> str:
+        """DOM fingerprint based on visible content — detects modals, navigation and page changes."""
+        try:
+            result = await self._page.evaluate("""() => {
+                const headers = [...document.querySelectorAll('h1,h2,h3')]
+                    .map(h => h.innerText.trim()).join('|').slice(0, 100);
+                const dialogs = document.querySelectorAll(
+                    '[role="dialog"]:not([hidden])'
+                ).length;
+                const visibleBtns = document.querySelectorAll(
+                    'button:not([disabled])'
+                ).length;
+                return headers + '_d' + dialogs + '_b' + visibleBtns;
+            }""")
+            return str(result)
+        except Exception:
+            return ""
+
     async def _auto_dismiss_popups(self):
+        """Dismiss popups heuristically. Not called automatically — agent decides."""
         try:
             dismissed = await self._page.evaluate("""() => {
                 const closeTexts = ['×', '✕', '✗', 'X', 'Close', 'Закрыть',
@@ -88,7 +113,6 @@ class PageStateExtractor:
             if dismissed:
                 await asyncio.sleep(0.4)
                 return
-            # Fallback — Escape for role="dialog" overlays
             has_dialog = await self._page.evaluate("""() => {
                 const dialogs = document.querySelectorAll(
                     '[role="dialog"], [role="alertdialog"]'
@@ -111,12 +135,13 @@ class PageStateExtractor:
             results = await self._page.evaluate("""() => {
                 const SELECTORS = 'button, a, input, select, textarea, ' +
                     '[role="button"], [role="link"], [role="menuitem"], ' +
-                    '[role="tab"], [role="checkbox"], [role="radio"]';
+                    '[role="tab"], [role="checkbox"], [role="radio"], ' +
+                    '[role="option"], li[tabindex], [role="listitem"]';
                 const vh = window.innerHeight;
                 const vw = window.innerWidth;
-                const elements = [];
+                const modalElements = [];
+                const regularElements = [];
                 for (const el of document.querySelectorAll(SELECTORS)) {
-                    if (elements.length >= 30) break;
                     const r = el.getBoundingClientRect();
                     if (r.x < -50 || r.y < -50 || r.y > vh + 50) continue;
                     if (r.x > vw + 50) continue;
@@ -127,7 +152,7 @@ class PageStateExtractor:
                         el.getAttribute('placeholder') || ''
                     ).slice(0, 40).trim();
                     if (!text) continue;
-                    elements.push({
+                    const data = {
                         tag: el.tagName.toLowerCase(),
                         text: text,
                         inputType: el.getAttribute('type') || '',
@@ -135,9 +160,31 @@ class PageStateExtractor:
                         y: Math.round(r.y),
                         w: Math.round(r.width),
                         h: Math.round(r.height),
-                    });
+                    };
+                    // Check if element lives inside a modal / overlay
+                    let parent = el.parentElement;
+                    let inModal = false;
+                    for (let i = 0; i < 8; i++) {
+                        if (!parent) break;
+                        const role = parent.getAttribute('role') || '';
+                        const cls = parent.className || '';
+                        if (role === 'dialog' || role === 'alertdialog' ||
+                            cls.includes('modal') || cls.includes('popup') ||
+                            cls.includes('overlay') || cls.includes('sheet') ||
+                            cls.includes('bottom-sheet') || cls.includes('drawer')) {
+                            inModal = true;
+                            break;
+                        }
+                        parent = parent.parentElement;
+                    }
+                    if (inModal) {
+                        modalElements.push(data);
+                    } else {
+                        regularElements.push(data);
+                    }
                 }
-                return elements;
+                // Modal elements first so they are never pushed out by background UI
+                return [...modalElements, ...regularElements].slice(0, 35);
             }""")
             for el_info in results:
                 el_data: dict = {
