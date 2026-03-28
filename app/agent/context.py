@@ -104,7 +104,7 @@ class ContextManager:
                         }
 
         # Truncate middle tool results when conversation is long
-        if len(self.messages) > 20:
+        if len(self.messages) > 24:
             preserved = self.messages[:2]   # task + plan always kept
             recent = self.messages[-16:]    # last 16 messages always kept in full
             middle = []
@@ -117,9 +117,11 @@ class ContextManager:
                             if (
                                 isinstance(block, dict)
                                 and block.get("type") == "tool_result"
-                                and block.get("content") != "[result truncated]"
                             ):
-                                new_content.append({**block, "content": "[result truncated]"})
+                                raw = block.get("content", "")
+                                if isinstance(raw, str) and len(raw) > 200:
+                                    raw = raw[:100] + "...[truncated]"
+                                new_content.append({**block, "content": raw})
                             else:
                                 new_content.append(block)
                         middle.append({**msg, "content": new_content})

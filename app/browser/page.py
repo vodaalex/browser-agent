@@ -18,7 +18,17 @@ class PageStateExtractor:
         self._cached_elements = []
 
     async def screenshot(self) -> str:
-        data = await self._page.screenshot(type="jpeg", quality=60, full_page=False)
+        data = await self._page.screenshot(
+            type="jpeg",
+            quality=80,
+            full_page=False,
+            clip={
+                "x": 0,
+                "y": 0,
+                "width": 1280,
+                "height": 800,
+            },
+        )
         return base64.b64encode(data).decode("utf-8")
 
     async def get_page_state(self) -> dict:
@@ -58,40 +68,45 @@ class PageStateExtractor:
                 '[role="link"], [role="menuitem"], [role="tab"], '
                 '[role="checkbox"], [role="radio"], [tabindex]'
             )
-            for handle in handles[:25]:
+            for handle in handles[:40]:
                 try:
-                    bbox = await handle.bounding_box()
-                    if not bbox:
-                        continue
-                    if bbox["x"] < -100 or bbox["y"] < -100:
-                        continue
-
-                    tag = await handle.evaluate("el => el.tagName.toLowerCase()")
-                    text = ""
-                    try:
-                        text = await handle.inner_text()
-                    except Exception:
-                        pass
-                    aria = await handle.get_attribute("aria-label") or ""
-                    placeholder = await handle.get_attribute("placeholder") or ""
-                    input_type = await handle.get_attribute("type") or ""
-                    label = (text or aria or placeholder)[:40].strip()
-
-                    if not label:
+                    el_info = await handle.evaluate("""el => {
+                        const r = el.getBoundingClientRect();
+                        if (r.x < -100 || r.y < -100 || r.width === 0 || r.height === 0)
+                            return null;
+                        const text = (
+                            el.innerText ||
+                            el.getAttribute('aria-label') ||
+                            el.getAttribute('placeholder') || ''
+                        ).slice(0, 40).trim();
+                        if (!text) return null;
+                        return {
+                            tag: el.tagName.toLowerCase(),
+                            text: text,
+                            inputType: el.getAttribute('type') || '',
+                            rect: {
+                                x: Math.round(r.x),
+                                y: Math.round(r.y),
+                                w: Math.round(r.width),
+                                h: Math.round(r.height)
+                            }
+                        };
+                    }""")
+                    if not el_info:
                         continue
 
                     el_data: dict = {
-                        "type": tag,
-                        "text": label,
+                        "type": el_info["tag"],
+                        "text": el_info["text"],
                         "bbox": [
-                            round(bbox["x"]),
-                            round(bbox["y"]),
-                            round(bbox["width"]),
-                            round(bbox["height"]),
+                            el_info["rect"]["x"],
+                            el_info["rect"]["y"],
+                            el_info["rect"]["w"],
+                            el_info["rect"]["h"],
                         ],
                     }
-                    if input_type:
-                        el_data["input_type"] = input_type
+                    if el_info["inputType"]:
+                        el_data["input_type"] = el_info["inputType"]
                     elements.append(el_data)
                 except Exception:
                     continue

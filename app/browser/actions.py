@@ -28,7 +28,7 @@ class BrowserActions:
     async def click(self, x: int, y: int) -> dict:
         try:
             await self._page.mouse.click(x, y)
-            await asyncio.sleep(0.7)
+            await asyncio.sleep(1.0)
             self._notify_page_change()
             return {"success": True}
         except Exception as e:
@@ -37,7 +37,7 @@ class BrowserActions:
 
     async def type_text(self, text: str) -> dict:
         try:
-            await self._page.keyboard.type(text, delay=30)
+            await self._page.keyboard.type(text, delay=15)
             return {"success": True}
         except Exception as e:
             logger.warning("Type failed: %s", e)
@@ -46,7 +46,7 @@ class BrowserActions:
     async def press_key(self, key: str) -> dict:
         try:
             await self._page.keyboard.press(key)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
             return {"success": True}
         except Exception as e:
             logger.warning("Press key failed: %s", e)
@@ -56,7 +56,8 @@ class BrowserActions:
         try:
             await self._page.mouse.move(x, y)
             await self._page.mouse.wheel(delta_x=0, delta_y=delta_y)
-            await asyncio.sleep(0.4)
+            await asyncio.sleep(0.3)
+            self._notify_page_change()
             return {"success": True}
         except Exception as e:
             logger.warning("Scroll failed: %s", e)
@@ -71,9 +72,9 @@ class BrowserActions:
 
     async def _wait_for_stable(self):
         try:
-            await self._page.wait_for_load_state("networkidle", timeout=3_000)
+            await self._page.wait_for_load_state("networkidle", timeout=2_500)
         except Exception:
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(0.8)
 
 
 

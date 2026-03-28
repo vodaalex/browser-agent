@@ -53,7 +53,6 @@ class AgentExecutor:
             await self.send_event({"type": "plan", "steps": plan})
 
         self.context.init_from_plan(task, plan)
-        await self.send_event({"type": "thought", "content": f"Starting task: {task}"})
 
         try:
             while self._running:

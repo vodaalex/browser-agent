@@ -1,5 +1,3 @@
-"""Entry point — run with: python run.py"""
-
 import uvicorn
 
 from app.config import settings
