@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Innie</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #f7f7f5;
+      --surface: #ffffff;
+      --surface2:#f2f2f0;
+      --border:  #e8e8e5;
+      --border-strong: #c8c8c2;
+      --text:    #1a1a18;
+      --text-2:  #6b6b65;
+      --text-3:  #a0a09a;
+      --font:    'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono:    'Geist Mono', 'Fira Code', monospace;
+      --radius:  10px;
+      --radius-sm: 6px;
+      /* dot colors per spec */
+      --c-task:     #1a1a18;
+      --c-thought:  #c0c0bc;
+      --c-navigate: #3b82f6;
+      --c-click:    #f97316;
+      --c-type:     #22c55e;
+      --c-observe:  #8b5cf6;
+      --c-wait:     #9ca3af;
+      --c-ask:      #eab308;
+      --c-complete: #16a34a;
+      --c-error:    #dc2626;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Shell ── */
+    .shell {
+      width: 380px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      box-shadow: 2px 0 16px rgba(0,0,0,0.05);
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 13px 14px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border-strong);
+      flex-shrink: 0;
+      transition: background 0.25s;
+    }
+
+    .brand-dot.thinking { background: #3b82f6; animation: breathe 1.4s ease-in-out infinite; }
+    .brand-dot.acting   { background: #f97316; animation: breathe 0.9s ease-in-out infinite; }
+    .brand-dot.waiting  { background: #eab308; }
+    .brand-dot.complete { background: #16a34a; }
+    .brand-dot.error    { background: #dc2626; }
+
+    .brand-name {
+      font-size: 13.5px;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      color: var(--text);
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.3; transform: scale(0.6); }
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .btn-stop {
+      display: none;
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+      border-radius: var(--radius-sm);
+      padding: 3px 10px;
+      font-size: 11.5px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.15s;
+      letter-spacing: -0.01em;
+    }
+    .btn-stop:hover { background: #fee2e2; }
+
+    .step-badge {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-3);
+      padding: 2px 7px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      letter-spacing: 0.01em;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-3);
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+      letter-spacing: 0.01em;
+    }
+
+    .status-pill.thinking { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+    .status-pill.acting   { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+    .status-pill.waiting  { background: #fefce8; border-color: #fde68a; color: #92400e; }
+    .status-pill.complete { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
+    .status-pill.error    { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+
+    /* ── Roadmap section (wraps toggle + roadmap-wrap) ── */
+    .roadmap-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* Steps toggle header (shown after complete) */
+    .steps-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-3);
+      background: var(--surface2);
+      transition: background 0.15s;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .steps-toggle:hover { background: var(--border); }
+
+    .toggle-chevron {
+      width: 12px;
+      height: 12px;
+      transition: transform 0.2s;
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+    .toggle-chevron.open { transform: rotate(180deg); }
+
+    .steps-time { color: var(--text-3); }
+
+    /* Final answer panel */
+    .final-answer {
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      max-height: 50vh;
+      overflow-y: auto;
+      padding: 16px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .final-answer::-webkit-scrollbar { width: 3px; }
+    .final-answer::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+    .answer-text {
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+
+    /* ── Roadmap ── */
+    .roadmap-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 0 0;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+      transition: opacity 0.2s ease;
+    }
+    .roadmap-wrap::-webkit-scrollbar { width: 3px; }
+    .roadmap-wrap::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+    .roadmap { padding: 0 14px; }
+
+    /* Empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 52px 24px;
+      color: var(--text-3);
+      text-align: center;
+    }
+    .empty-icon { width: 34px; height: 34px; opacity: 0.2; }
+    .empty-state p { font-size: 12px; opacity: 0.75; }
+
+    /* ── Roadmap Item ── */
+    .ri {
+      display: flex;
+      gap: 0;
+      animation: slideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-5px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Left: dot + line */
+    .ri-left {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 26px;
+      flex-shrink: 0;
+    }
+
+    .ri-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 12px;
+    }
+
+    .ri.active .ri-dot { animation: dotPulse 1.5s ease-in-out infinite; }
+
+    @keyframes dotPulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50%       { transform: scale(1.5); opacity: 0.45; }
+    }
+
+    .ri-line {
+      width: 1px;
+      flex: 1;
+      background: var(--border);
+      min-height: 8px;
+      margin-top: 4px;
+    }
+
+    .ri:last-child .ri-line { opacity: 0; }
+
+    /* Right: content */
+    .ri-content {
+      flex: 1;
+      min-width: 0;
+      padding: 5px 0 7px 9px;
+    }
+
+    .ri-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: default;
+      user-select: none;
+      min-height: 22px;
+    }
+
+    .ri.collapsible .ri-head { cursor: pointer; }
+    .ri.collapsible .ri-head:hover .ri-title { color: var(--text); }
+
+    .ri-title {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text);
+      line-height: 1.45;
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-top: 3px;
+    }
+
+    .ri-title em {
+      font-style: italic;
+      font-weight: 400;
+      color: var(--text-2);
+    }
+
+    .ri-domain {
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--text-3);
+      margin-left: 4px;
+    }
+
+    /* Tag pill */
+    .ri-tag {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-3);
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+      letter-spacing: 0.01em;
+      margin-top: 3px;
+      white-space: nowrap;
+    }
+
+    .ri-chevron {
+      width: 13px;
+      height: 13px;
+      flex-shrink: 0;
+      color: var(--text-3);
+      margin-top: 3px;
+      transition: transform 0.2s;
+      opacity: 0.5;
+    }
+
+    .ri:not(.collapsed) .ri-chevron { transform: rotate(180deg); }
+
+    /* Body */
+    .ri-body {
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.25s ease, opacity 0.2s ease;
+      opacity: 0;
+    }
+
+    .ri:not(.collapsed) .ri-body {
+      max-height: 600px;
+      opacity: 1;
+    }
+
+    .ri-body-inner { padding: 5px 0 4px; }
+
+    /* Detail rows */
+    .detail-row {
+      display: flex;
+      gap: 8px;
+      font-size: 11.5px;
+      line-height: 1.5;
+      margin-bottom: 2px;
+    }
+
+    .detail-key {
+      color: var(--text-3);
+      font-weight: 500;
+      min-width: 40px;
+      flex-shrink: 0;
+    }
+
+    .detail-val {
+      color: var(--text-2);
+      font-family: var(--mono);
+      font-size: 11px;
+      word-break: break-all;
+      flex: 1;
+    }
+
+    .detail-val.wrap {
+      font-family: var(--font);
+      font-size: 12px;
+      word-break: normal;
+    }
+
+    /* Args block */
+    .args-block {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      margin-top: 5px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-2);
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.55;
+    }
+
+    /* Ask user */
+    .ask-body { margin-top: 6px; }
+    .ask-question { font-size: 12.5px; color: var(--text); margin-bottom: 8px; line-height: 1.5; }
+    .ask-row { display: flex; gap: 6px; }
+    .ask-row input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 6px 10px;
+      font-size: 12.5px;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .ask-row input:focus { border-color: var(--c-ask); }
+    .btn-ask-send {
+      background: var(--c-ask);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.15s;
+    }
+    .btn-ask-send:hover { opacity: 0.85; }
+
+    /* Report text */
+    .report-text {
+      font-size: 12.5px;
+      color: var(--text-2);
+      line-height: 1.6;
+      margin-top: 5px;
+    }
+
+    /* Dot colors */
+    .dot-task     { background: var(--c-task); }
+    .dot-thought  { background: var(--c-thought); width: 7px; height: 7px; margin-top: 14px; }
+    .dot-navigate { background: var(--c-navigate); }
+    .dot-click    { background: var(--c-click); }
+    .dot-type     { background: var(--c-type); }
+    .dot-observe  { background: var(--c-observe); }
+    .dot-wait     { background: var(--c-wait); }
+    .dot-ask      { background: var(--c-ask); }
+    .dot-complete { background: var(--c-complete); }
+    .dot-error    { background: var(--c-error); }
+    /* Plan block */
+    .dot-plan { background: var(--c-task); }
+
+    .plan-body {
+      margin-top: 5px;
+      padding: 8px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .plan-step {
+      font-size: 12.5px;
+      color: var(--text);
+      line-height: 1.7;
+      transition: opacity 0.3s, text-decoration 0.3s;
+    }
+
+    .plan-step.done {
+      opacity: 0.4;
+      text-decoration: line-through;
+    }
+
+    /* Action result row */
+    .result-ok  { color: #16a34a !important; }
+    .result-err { color: #dc2626 !important; }
+
+    /* ── Thinking indicator ── */
+    .thinking-row {
+      display: none;
+      align-items: center;
+      gap: 9px;
+      padding: 6px 14px 10px 23px;
+      color: var(--text-3);
+      font-size: 12px;
+    }
+
+    .t-spinner {
+      width: 11px;
+      height: 11px;
+      border: 1.5px solid var(--border);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Task Input ── */
+    .task-area {
+      border-top: 1px solid var(--border);
+      padding: 11px 13px 13px;
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .input-wrap {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      overflow: hidden;
+    }
+
+    .input-wrap:focus-within {
+      border-color: var(--border-strong);
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.04);
+    }
+
+    .input-wrap textarea {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      padding: 10px 12px 6px;
+      font-size: 13px;
+      font-family: var(--font);
+      resize: none;
+      outline: none;
+      min-height: 58px;
+      max-height: 120px;
+      line-height: 1.5;
+      display: block;
+    }
+
+    .input-wrap textarea::placeholder { color: var(--text-3); }
+
+    .input-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 10px 7px;
+    }
+
+    .hint { font-size: 10.5px; color: var(--text-3); }
+
+    .btn-run {
+      background: var(--text);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: opacity 0.15s;
+      letter-spacing: -0.01em;
+    }
+    .btn-run:hover { opacity: 0.8; }
+    .btn-run:disabled { opacity: 0.35; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">
+      <div class="brand-dot" id="brandDot"></div>
+      <span class="brand-name">Innie</span>
+    </div>
+    <div class="header-right">
+      <button class="btn-stop" id="stopBtn" onclick="sendStop()">Stop</button>
+      <span class="step-badge" id="stepBadge">Step 0</span>
+      <div class="status-pill" id="statusPill">
+        <span id="statusText">Idle</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Roadmap section -->
+  <div class="roadmap-section" id="roadmapSection">
+    <!-- Steps toggle (visible after task complete) -->
+    <div class="steps-toggle" id="stepsToggle" onclick="toggleSteps()" style="display:none">
+      <svg class="toggle-chevron" id="toggleChevron" viewBox="0 0 12 12" fill="none"
+           stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M2 4l4 4 4-4"/>
+      </svg>
+      <span id="stepsCount">0 steps</span>
+      <span class="steps-time" id="stepsTime"></span>
+    </div>
+    <!-- Scrollable roadmap -->
+    <div class="roadmap-wrap" id="roadmapWrap">
+      <div class="roadmap" id="roadmap">
+        <div class="empty-state" id="emptyState">
+          <svg class="empty-icon" viewBox="0 0 34 34" fill="none">
+            <rect x="2" y="5" width="30" height="24" rx="3" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M2 11h30" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="7" cy="8" r="1.1" fill="currentColor"/>
+            <circle cx="11" cy="8" r="1.1" fill="currentColor"/>
+            <circle cx="15" cy="8" r="1.1" fill="currentColor"/>
+          </svg>
+          <p>Enter a task below to start</p>
+        </div>
+      </div>
+      <div class="thinking-row" id="thinkingRow">
+        <div class="t-spinner"></div>
+        <span>Thinking…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Final answer (shown after task complete) -->
+  <div class="final-answer" id="finalAnswer" style="display:none">
+    <div class="answer-text" id="answerText"></div>
+  </div>
+
+  <!-- Input -->
+  <div class="task-area">
+    <div class="input-wrap">
+      <textarea
+        id="taskInput"
+        placeholder="Ask anything…"
+        onkeydown="handleKey(event)"
+      ></textarea>
+      <div class="input-footer">
+        <span class="hint">Shift+Enter newline · Enter to run</span>
+        <button class="btn-run" id="runBtn" onclick="sendTask()">Run</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── State ─────────────────────────────────────────────────────
+  let ws = null;
+  let items = [];
+  let activeItemId = null;
+  let lastThoughtId = null;
+  let askCounter = 0;
+  let stepCount = 0;
+  let reconnTimer = null;
+  let taskStartTime = null;
+  let stepsExpanded = false;
+
+  // ── Tool metadata ─────────────────────────────────────────────
+  function toolMeta(tool) {
+    switch (tool) {
+      case 'navigate':        return { dot: 'dot-navigate', tag: 'navigate' };
+      case 'click':           return { dot: 'dot-click',    tag: 'click' };
+      case 'type_text':       return { dot: 'dot-type',     tag: 'type' };
+      case 'get_elements':    return { dot: 'dot-observe',  tag: 'elements' };
+      case 'get_page_state':  return { dot: 'dot-observe',  tag: 'page state' };
+      case 'screenshot':      return { dot: 'dot-observe',  tag: 'screenshot' };
+      case 'wait':            return { dot: 'dot-wait',     tag: 'wait' };
+      case 'scroll':          return { dot: 'dot-wait',     tag: 'scroll' };
+      case 'press_key':       return { dot: 'dot-wait',     tag: 'key' };
+      case 'go_back':         return { dot: 'dot-navigate', tag: 'back' };
+      case 'ask_user':        return { dot: 'dot-ask',      tag: 'ask' };
+      case 'task_complete':   return { dot: 'dot-complete', tag: 'complete' };
+      default:                return { dot: 'dot-thought',  tag: tool };
+    }
+  }
+
+  // ── Roadmap management ────────────────────────────────────────
+  function addItem(cfg) {
+    // Grouping: consecutive wait / get_page_state items collapse into one
+    if (cfg.groupKey && items.length > 0) {
+      const last = items[items.length - 1];
+      if (last.groupKey === cfg.groupKey) {
+        last.groupCount = (last.groupCount || 1) + 1;
+        const el = document.getElementById(`ri-${last.id}`);
+        if (el) {
+          el.querySelector('.ri-title').innerHTML =
+            esc(cfg.baseTitle) +
+            ` <span style="color:var(--text-3);font-weight:400">(×${last.groupCount})</span>`;
+        }
+        return last.id;
+      }
+    }
+
+    const id = items.length;
+    const item = { id, active: false, collapsed: true, tag: '', groupCount: 1, ...cfg };
+    items.push(item);
+
+    if (activeItemId !== null) setActive(activeItemId, false);
+    activeItemId = id;
+
+    document.getElementById('emptyState')?.remove();
+    document.getElementById('roadmap').appendChild(buildItemEl(item));
+    setActive(id, true);
+    scrollBottom();
+    return id;
+  }
+
+  function updateItem(id, changes) {
+    if (id == null || !items[id]) return;
+    Object.assign(items[id], changes);
+    const el = document.getElementById(`ri-${id}`);
+    if (!el) return;
+    if ('title' in changes)   el.querySelector('.ri-title').innerHTML = changes.title;
+    if ('bodyHtml' in changes) el.querySelector('.ri-body-inner').innerHTML = changes.bodyHtml;
+    if ('collapsed' in changes) el.classList.toggle('collapsed', changes.collapsed);
+  }
+
+  function setActive(id, active) {
+    if (id == null || !items[id]) return;
+    items[id].active = active;
+    const el = document.getElementById(`ri-${id}`);
+    if (el) el.classList.toggle('active', active);
+  }
+
+  function toggleItem(id) {
+    if (!items[id]?.collapsible) return;
+    updateItem(id, { collapsed: !items[id].collapsed });
+  }
+
+  function buildItemEl(item) {
+    const el = document.createElement('div');
+    el.className = 'ri' +
+      (item.collapsible ? ' collapsible' : '') +
+      (item.collapsed   ? ' collapsed'   : '');
+    el.id = `ri-${item.id}`;
+
+    const tagHtml = item.tag
+      ? `<span class="ri-tag">${esc(item.tag)}</span>`
+      : '';
+
+    const chevron = item.collapsible
+      ? `<svg class="ri-chevron" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 4.5l3.5 3.5 3.5-3.5"/></svg>`
+      : '';
+
+    el.innerHTML = `
+      <div class="ri-left">
+        <div class="ri-dot ${item.dotClass}"></div>
+        <div class="ri-line"></div>
+      </div>
+      <div class="ri-content">
+        <div class="ri-head" onclick="toggleItem(${item.id})">
+          <div class="ri-title">${item.title}</div>
+          ${tagHtml}
+          ${chevron}
+        </div>
+        <div class="ri-body">
+          <div class="ri-body-inner">${item.bodyHtml || ''}</div>
+        </div>
+      </div>`;
+    return el;
+  }
+
+  function scrollBottom() {
+    const wrap = document.getElementById('roadmapWrap');
+    wrap.scrollTop = wrap.scrollHeight;
+  }
+
+  // ── Thinking indicator ────────────────────────────────────────
+  function showThinking(show) {
+    const row = document.getElementById('thinkingRow');
+    row.style.display = show ? 'flex' : 'none';
+    if (show) scrollBottom();
+  }
+
+  // ── Event handlers ────────────────────────────────────────────
+  function handleEvent(ev) {
+    switch (ev.type) {
+
+      case 'plan': {
+        showThinking(false);
+        const stepsHtml = (ev.steps || [])
+          .map((s, i) => `<div class="plan-step" id="plan-step-${i}">${i + 1}. ${esc(s)}</div>`)
+          .join('');
+        const body = `<div class="plan-body">${stepsHtml}</div>`;
+        addItem({
+          type: 'plan',
+          dotClass: 'dot-plan',
+          tag: 'plan',
+          title: 'Plan',
+          bodyHtml: body,
+          collapsible: false,
+          collapsed: false,
+        });
+        showThinking(true);
+        break;
+      }
+
+      case 'thought': {
+        setStatus('thinking', 'Thinking');
+        showThinking(false);
+        const short = (ev.content || '').slice(0, 90);
+        const ellipsis = ev.content.length > 90 ? '…' : '';
+        const body = `<div class="detail-row"><div class="detail-val wrap">${esc(ev.content)}</div></div>`;
+        if (lastThoughtId !== null && items[lastThoughtId] && activeItemId === lastThoughtId) {
+          updateItem(lastThoughtId, {
+            title: `<em>${esc(short)}${ellipsis}</em>`,
+            bodyHtml: body,
+          });
+        } else {
+          lastThoughtId = addItem({
+            dotClass: 'dot-thought',
+            tag: 'thought',
+            title: `<em>${esc(short)}${ellipsis}</em>`,
+            bodyHtml: body,
+            collapsible: true,
+            collapsed: true,
+          });
+        }
+        showThinking(true);
+        break;
+      }
+
+      case 'action': {
+        lastThoughtId = null;
+        showThinking(false);
+        setStatus('acting', 'Acting');
+        const meta = toolMeta(ev.tool);
+        const desc = ev.description || ev.tool;
+        const isPageState = ev.tool === 'get_page_state' || ev.tool === 'get_elements';
+
+        // Scanning pulse on roadmap when agent observes the page
+        if (isPageState) {
+          const wrap = document.getElementById('roadmapWrap');
+          wrap.style.opacity = '0.7';
+          setTimeout(() => { wrap.style.opacity = '1'; }, 400);
+        }
+
+        // Build title — for page state include domain as soft suffix
+        let titleHtml = esc(desc);
+        let baseTitle = desc;
+        if (isPageState && ev.url) {
+          let domain = ev.url;
+          try { domain = new URL(ev.url).hostname; } catch {}
+          if (domain && domain !== 'about:blank') {
+            titleHtml = `Analyzing page <span class="ri-domain">${esc(domain)}</span>`;
+            baseTitle = 'Analyzing page';
+          }
+        }
+
+        // Build body — richer for page-state, standard for other tools
+        let body;
+        if (isPageState) {
+          const urlRow = ev.url
+            ? `<div class="detail-row"><span class="detail-key">url</span><span class="detail-val">${esc(ev.url)}</span></div>`
+            : '';
+          body = urlRow +
+            `<div class="detail-row"><span class="detail-key">action</span>` +
+            `<span class="detail-val">screenshot + a11y tree (25 elements)</span></div>`;
+        } else {
+          let argsHtml = '';
+          if (ev.args && Object.keys(ev.args).length) {
+            const trimmed = {};
+            for (const [k, v] of Object.entries(ev.args)) {
+              trimmed[k] = typeof v === 'string' && v.length > 80 ? v.slice(0, 77) + '…' : v;
+            }
+            argsHtml = `<div class="args-block">${esc(JSON.stringify(trimmed, null, 2))}</div>`;
+          }
+          body = `<div class="detail-row"><span class="detail-key">tool</span>` +
+            `<span class="detail-val">${esc(ev.tool)}</span></div>${argsHtml}`;
+        }
+
+        const groupKey = ev.tool === 'wait' ? 'wait'
+          : isPageState ? 'get_page_state'
+          : null;
+
+        addItem({
+          type: 'action',
+          tool: ev.tool,
+          dotClass: meta.dot,
+          tag: meta.tag,
+          title: titleHtml,
+          baseTitle,
+          bodyHtml: body,
+          collapsible: true,
+          collapsed: true,
+          groupKey,
+        });
+        break;
+      }
+
+      case 'action_result': {
+        // Append result row to the last matching action item
+        for (let i = items.length - 1; i >= 0; i--) {
+          if (items[i].type === 'action' && items[i].tool === ev.tool) {
+            const ok = ev.result === 'success';
+            const label = ok
+              ? `✓ success${ev.detail ? ' · ' + esc(ev.detail) : ''}`
+              : `✗ ${esc(ev.detail || 'error')}`;
+            const row = `<div class="detail-row" style="margin-top:4px">` +
+              `<span class="detail-key">result</span>` +
+              `<span class="detail-val ${ok ? 'result-ok' : 'result-err'}">${label}</span></div>`;
+            const el = document.getElementById(`ri-${items[i].id}`);
+            if (el) el.querySelector('.ri-body-inner').insertAdjacentHTML('beforeend', row);
+            break;
+          }
+        }
+        break;
+      }
+
+      case 'step': {
+        stepCount = ev.step;
+        document.getElementById('stepBadge').textContent = `Step ${stepCount}`;
+        break;
+      }
+
+      case 'ask_user': {
+        lastThoughtId = null;
+        showThinking(false);
+        setStatus('waiting', 'Waiting');
+        askCounter++;
+        const aid = `ask-inp-${askCounter}`;
+        const body = `
+          <div class="ask-body">
+            <div class="ask-question">${esc(ev.question)}</div>
+            <div class="ask-row">
+              <input type="text" id="${aid}" placeholder="Your answer…" onkeydown="replyKey(event,'${aid}')">
+              <button class="btn-ask-send" onclick="sendReply('${aid}')">Send</button>
+            </div>
+          </div>`;
+        addItem({
+          dotClass: 'dot-ask',
+          tag: 'ask',
+          title: 'Question for you',
+          bodyHtml: body,
+          collapsible: false,
+          collapsed: false,
+        });
+        setTimeout(() => { document.getElementById(aid)?.focus(); }, 80);
+        break;
+      }
+
+      case 'complete': {
+        lastThoughtId = null;
+        showThinking(false);
+        setStatus('complete', 'Complete');
+        enableInput();
+
+        // Collapse roadmap → show toggle + final answer
+        const elapsed = Math.round((Date.now() - (taskStartTime || Date.now())) / 1000);
+        const stepWord = stepCount === 1 ? 'step' : 'steps';
+        document.getElementById('stepsCount').textContent = `${stepCount} ${stepWord}`;
+        document.getElementById('stepsTime').textContent = `· ${elapsed}s`;
+        document.getElementById('stepsToggle').style.display = 'flex';
+        document.getElementById('roadmapWrap').style.display = 'none';
+        document.getElementById('roadmapSection').style.flex = '0 0 auto';
+        document.getElementById('answerText').textContent = ev.report;
+        document.getElementById('finalAnswer').style.display = 'block';
+        stepsExpanded = false;
+        document.getElementById('toggleChevron').classList.remove('open');
+        break;
+      }
+
+      case 'error': {
+        lastThoughtId = null;
+        showThinking(false);
+        setStatus('error', 'Error');
+        addItem({
+          dotClass: 'dot-error',
+          tag: 'error',
+          title: 'Error',
+          bodyHtml: `<div class="report-text">${esc(ev.message)}</div>`,
+          collapsible: false,
+          collapsed: false,
+        });
+        enableInput();
+        break;
+      }
+    }
+  }
+
+  // ── Status ────────────────────────────────────────────────────
+  function setStatus(cls, text) {
+    document.getElementById('statusPill').className = 'status-pill ' + cls;
+    document.getElementById('statusText').textContent = text;
+    const dot = document.getElementById('brandDot');
+    dot.className = 'brand-dot ' + (cls === 'idle' ? '' : cls);
+  }
+
+  // ── Input controls ────────────────────────────────────────────
+  function disableInput() {
+    document.getElementById('runBtn').disabled = true;
+    document.getElementById('stopBtn').style.display = 'inline-block';
+  }
+
+  function enableInput() {
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('stopBtn').style.display = 'none';
+    showThinking(false);
+  }
+
+  // ── Send task ─────────────────────────────────────────────────
+  function sendTask() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const inp = document.getElementById('taskInput');
+    const task = inp.value.trim();
+    if (!task) return;
+
+    // Reset state
+    items = []; lastThoughtId = null; activeItemId = null; stepCount = 0;
+    stepsExpanded = false;
+    taskStartTime = Date.now();
+    document.getElementById('stepBadge').textContent = 'Step 0';
+    document.getElementById('roadmap').innerHTML = '';
+    // Reset collapsible roadmap UI
+    document.getElementById('stepsToggle').style.display = 'none';
+    document.getElementById('toggleChevron').classList.remove('open');
+    document.getElementById('finalAnswer').style.display = 'none';
+    document.getElementById('answerText').textContent = '';
+    document.getElementById('roadmapWrap').style.display = 'block';
+    document.getElementById('roadmapSection').style.flex = '';
+
+    addItem({
+      dotClass: 'dot-task',
+      tag: 'task',
+      title: esc(task.slice(0, 60)) + (task.length > 60 ? '…' : ''),
+      bodyHtml: `<div class="detail-row"><div class="detail-val wrap">${esc(task)}</div></div>`,
+      collapsible: false,
+      collapsed: false,
+    });
+    setActive(0, false); // task item doesn't pulse
+
+    ws.send(JSON.stringify({ type: 'task', content: task }));
+    inp.value = '';
+    disableInput();
+    setStatus('thinking', 'Starting');
+    showThinking(true);
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTask(); }
+  }
+
+  // ── Stop ──────────────────────────────────────────────────────
+  function sendStop() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'stop' }));
+  }
+
+  // ── Toggle roadmap steps ───────────────────────────────────────
+  function toggleSteps() {
+    stepsExpanded = !stepsExpanded;
+    const wrap = document.getElementById('roadmapWrap');
+    const section = document.getElementById('roadmapSection');
+    const chevron = document.getElementById('toggleChevron');
+    wrap.style.display = stepsExpanded ? 'block' : 'none';
+    section.style.flex = stepsExpanded ? '1' : '0 0 auto';
+    chevron.classList.toggle('open', stepsExpanded);
+    if (stepsExpanded) scrollBottom();
+  }
+
+  // ── Reply ─────────────────────────────────────────────────────
+  function sendReply(inputId) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const inp = document.getElementById(inputId);
+    const answer = inp.value.trim();
+    if (!answer) return;
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:12px; color:var(--c-ask); margin-top:4px; font-style:italic;';
+    note.textContent = answer;
+    inp.closest('.ask-row').replaceWith(note);
+    ws.send(JSON.stringify({ type: 'user_reply', content: answer }));
+    setStatus('thinking', 'Thinking');
+    showThinking(true);
+  }
+
+  function replyKey(e, id) { if (e.key === 'Enter') sendReply(id); }
+
+  // ── Helpers ───────────────────────────────────────────────────
+  function esc(str) {
+    if (typeof str !== 'string') str = String(str ?? '');
+    return str
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+  }
+
+  // ── WebSocket ─────────────────────────────────────────────────
+  function connect() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    ws.onopen = () => {
+      if (reconnTimer) { clearTimeout(reconnTimer); reconnTimer = null; }
+      setStatus('idle', 'Idle');
+    };
+
+    ws.onclose = () => {
+      setStatus('error', 'Disconnected');
+      reconnTimer = setTimeout(connect, 2500);
+    };
+
+    ws.onerror = () => {};
+
+    ws.onmessage = (e) => {
+      try { handleEvent(JSON.parse(e.data)); } catch (err) { console.error(err); }
+    };
+  }
+
+  connect();
+</script>
+</body>
+</html>
