@@ -103,6 +103,32 @@ class ContextManager:
                             + [{"type": "text", "text": "[screenshot removed]"}],
                         }
 
+        # Truncate middle tool results when conversation is long
+        if len(self.messages) > 20:
+            preserved = self.messages[:2]   # task + plan always kept
+            recent = self.messages[-16:]    # last 16 messages always kept in full
+            middle = []
+            for msg in self.messages[2:-16]:
+                if msg["role"] == "user":
+                    content = msg.get("content", [])
+                    if isinstance(content, list):
+                        new_content = []
+                        for block in content:
+                            if (
+                                isinstance(block, dict)
+                                and block.get("type") == "tool_result"
+                                and block.get("content") != "[result truncated]"
+                            ):
+                                new_content.append({**block, "content": "[result truncated]"})
+                            else:
+                                new_content.append(block)
+                        middle.append({**msg, "content": new_content})
+                    else:
+                        middle.append(msg)
+                else:
+                    middle.append(msg)
+            self.messages = preserved + middle + recent
+
         logger.debug(
             "Context compressed: %d bytes, kept %d screenshots",
             context_size,

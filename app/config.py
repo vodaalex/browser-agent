@@ -6,11 +6,11 @@ class Settings(BaseSettings):
     # ── LLM ──────────────────────────────────────────────────────
     anthropic_api_key: str = ""
     model_name: str = "claude-sonnet-4-5"
-    max_tokens: int = 1024
+    max_tokens: int = 1500
 
     # ── Agent ────────────────────────────────────────────────────
     max_steps: int = 25
-    compress_threshold: int = 200_000
+    compress_threshold: int = 100_000
     max_screenshots_in_context: int = 2
 
     # ── Browser ──────────────────────────────────────────────────

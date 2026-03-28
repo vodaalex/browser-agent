@@ -1,4 +1,4 @@
-"""Tool dispatcher — maps tool names to handlers with caching and descriptions."""
+"""Tool dispatcher — maps tool names to handlers with descriptions."""
 
 from __future__ import annotations
 
@@ -29,10 +29,6 @@ class ToolDispatcher:
         self._browser = browser
         self._registry: dict[str, Handler] = self._build_registry()
 
-        # Page-state cache (throttle repeated observations)
-        self._cached_page_state: list | None = None
-        self._last_page_state_step: int = -1
-
     # ── Public API ───────────────────────────────────────────────
 
     async def dispatch(self, name: str, args: dict, *, step: int = 0) -> list | str:
@@ -43,25 +39,18 @@ class ToolDispatcher:
             return json.dumps({"error": f"Unknown tool: {name}"})
 
         try:
-            # Page-state tools have special caching logic
-            if name in ("get_page_state", "screenshot"):
-                return await self._handle_page_state_cached(step)
-
             result = await handler(self._browser, args)
-
-            # Invalidate page cache for actions that change the page
-            if name in ("navigate", "click", "press_key"):
-                self._cached_page_state = None
-
             return result
-
         except Exception as e:
             logger.error("Tool %s failed: %s", name, e)
             return json.dumps({"error": str(e)})
 
     def invalidate_cache(self):
-        """Force next get_page_state to fetch fresh data."""
-        self._cached_page_state = None
+        """Invalidate the page-state cache (URL-based cache in PageStateExtractor)."""
+        try:
+            self._browser.page_state.invalidate_cache()
+        except Exception:
+            pass
 
     @property
     def current_url(self) -> str:
@@ -73,7 +62,7 @@ class ToolDispatcher:
 
     @property
     def page_changes_on(self) -> frozenset[str]:
-        """Tools that do NOT represent page observation (used for action_result events)."""
+        """Tools that trigger action_result events (non-observation tools)."""
         return frozenset({"navigate", "click", "type_text", "press_key", "scroll", "wait"})
 
     # ── Action descriptions (human-readable) ─────────────────────
@@ -124,19 +113,3 @@ class ToolDispatcher:
             "scroll": handlers.handle_scroll,
             "wait": handlers.handle_wait,
         }
-
-    async def _handle_page_state_cached(self, step: int) -> list:
-        """Return cached page state if within 2 steps, otherwise fetch fresh."""
-        if (
-            step - self._last_page_state_step < 2
-            and step > 1
-            and self._cached_page_state is not None
-        ):
-            logger.debug("Returning cached page state (step %d)", step)
-            return self._cached_page_state
-
-        self._last_page_state_step = step
-        result = await handlers.handle_page_state(self._browser, {})
-        self._cached_page_state = result
-        return result
-

@@ -2,10 +2,11 @@ TOOL_DEFINITIONS = [
     {
         "name": "get_page_state",
         "description": (
-            "MAIN observation tool. Call this at the start of every step. "
-            "Returns a screenshot of the current page, a list of interactive elements "
-            "with their bounding boxes, and the current URL. "
-            "Use the screenshot for visual context and the elements list for precise click coordinates."
+            "Primary observation tool. Returns: (1) screenshot as JPEG image, "
+            "(2) list of up to 25 interactive elements with bbox coordinates, "
+            "(3) current URL. Call this after every navigation or click to see "
+            "what changed. If an element you need is not in the list, it may be "
+            "outside the viewport — use scroll() then call get_page_state() again."
         ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
@@ -16,7 +17,11 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "navigate",
-        "description": "Navigate to a URL. Use this to go to a specific website.",
+        "description": (
+            "Navigate to a URL. Always include the full URL with https://. "
+            "After navigation, call get_page_state() to verify the page loaded correctly. "
+            "If the page requires login, call ask_user() for credentials."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -31,9 +36,10 @@ TOOL_DEFINITIONS = [
     {
         "name": "click",
         "description": (
-            "Click at the given absolute coordinates on the page. "
-            "To click an element from the elements list, use its bbox center: "
-            "x = bbox[0] + bbox[2]/2, y = bbox[1] + bbox[3]/2."
+            "Click at absolute pixel coordinates. Compute center from bbox: "
+            "x = bbox[0] + bbox[2]//2, y = bbox[1] + bbox[3]//2. "
+            "After clicking, always call get_page_state() to verify the result. "
+            "If click has no effect, the element may be obscured — try scrolling first."
         ),
         "input_schema": {
             "type": "object",
@@ -47,8 +53,10 @@ TOOL_DEFINITIONS = [
     {
         "name": "type_text",
         "description": (
-            "Type text into the currently focused element. "
-            "Click the input field first, then call this to type."
+            "Type text into the currently focused element. You must click the "
+            "input field first to focus it, then call type_text(). For search fields, "
+            "follow with press_key('Enter') to submit. If the field already has text, "
+            "it will be appended — use press_key('Control+a') first to select all."
         ),
         "input_schema": {
             "type": "object",
@@ -60,13 +68,13 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "press_key",
-        "description": "Press a keyboard key. Common keys: Enter, Tab, Escape, ArrowDown, ArrowUp, Backspace, Delete, Space.",
+        "description": "Press a keyboard key. Common keys: Enter, Tab, Escape, ArrowDown, ArrowUp, Backspace, Delete, Space, Control+a.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "key": {
                     "type": "string",
-                    "description": "Key name, e.g. Enter, Tab, Escape, ArrowDown",
+                    "description": "Key name, e.g. Enter, Tab, Escape, ArrowDown, Control+a",
                 }
             },
             "required": ["key"],
@@ -111,16 +119,19 @@ TOOL_DEFINITIONS = [
     {
         "name": "ask_user",
         "description": (
-            "Ask the user for information you need to complete the task, "
-            "such as login credentials, personal information, or clarification. "
-            "The agent will pause and wait for the user's response."
+            "Pause and ask the user for required information. Use when: "
+            "login credentials are needed; "
+            "delivery address or personal info is required; "
+            "task is ambiguous and needs clarification; "
+            "you are stuck after 3+ attempts on the same goal. "
+            "Be specific about what information you need and why."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "question": {
                     "type": "string",
-                    "description": "The question to ask the user",
+                    "description": "The specific question to ask the user",
                 }
             },
             "required": ["question"],
@@ -129,19 +140,20 @@ TOOL_DEFINITIONS = [
     {
         "name": "task_complete",
         "description": (
-            "Call this when the task is fully completed. "
-            "Provide a clear summary of what was accomplished."
+            "Mark the task as done and provide a summary. Call this immediately "
+            "when the goal is achieved — do not continue exploring. "
+            "Write report as plain text without markdown symbols. "
+            "First line: one-sentence summary. Then details with line breaks."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "report": {
                     "type": "string",
-                    "description": "Detailed report of what was done and the outcome",
+                    "description": "Plain-text report of what was accomplished. No markdown.",
                 }
             },
             "required": ["report"],
         },
     },
 ]
-
