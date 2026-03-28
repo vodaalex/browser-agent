@@ -70,3 +70,8 @@ async def handle_wait(browser: BrowserManager, args: dict) -> str:
     result = await browser.actions.wait(args["milliseconds"])
     return json.dumps(result)
 
+
+async def handle_type_and_submit(browser: BrowserManager, args: dict) -> str:
+    result = await browser.actions.type_and_submit(args["x"], args["y"], args["text"])
+    return json.dumps(result)
+

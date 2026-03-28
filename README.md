@@ -45,7 +45,14 @@ The agent can deviate from the plan on its own when needed.
 
 Pattern: **Plan → Execute → Adapt**
 
-### 3. Context Management
+### 3. Tool Consolidation
+
+По рекомендации Anthropic — консолидация overlapping tools.
+Убран дублирующий tool `screenshot` (заменён `get_page_state`).
+Добавлен `type_and_submit` — объединяет click+type+Enter в один вызов.
+Сокращает количество шагов для поиска с 3 до 1.
+
+### 4. Context Management
 
 - Full conversation history maintained across steps
 - Screenshots rotated: only last 2 kept in context (older replaced with placeholder)
@@ -66,10 +73,10 @@ Async-first API совместим с asyncio архитектурой.
 Нет overhead абстракций LangChain/LlamaIndex.
 Проще отлаживать и оптимизировать контекст вручную.
 
-### Почему JPEG quality=60 для скриншотов
-PNG скриншот ~800KB, JPEG q60 ~80KB — в 10x меньше токенов.
-Claude читает текст на странице чётко при quality>=60.
-Критично для стоимости: каждый шаг экономит ~$0.008.
+### Почему JPEG quality=80, device_scale_factor=1
+device_scale_factor=2 рендерил в 2560x1600 — в 4x больше пикселей.
+Это нагружало GPU и замедляло скриншоты.
+При scale=1 + quality=80: чёткое изображение, низкая нагрузка.
 
 ### Почему Dual-Channel Perception
 Только скриншот: агент не знает точные координаты кнопок.

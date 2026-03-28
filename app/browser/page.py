@@ -18,17 +18,7 @@ class PageStateExtractor:
         self._cached_elements = []
 
     async def screenshot(self) -> str:
-        data = await self._page.screenshot(
-            type="jpeg",
-            quality=80,
-            full_page=False,
-            clip={
-                "x": 0,
-                "y": 0,
-                "width": 1280,
-                "height": 800,
-            },
-        )
+        data = await self._page.screenshot(type="jpeg", quality=80, full_page=False)
         return base64.b64encode(data).decode("utf-8")
 
     async def get_page_state(self) -> dict:

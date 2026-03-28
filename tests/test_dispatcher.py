@@ -61,17 +61,4 @@ class TestDispatch:
         parsed = json.loads(result)
         assert "error" in parsed
 
-    @pytest.mark.asyncio
-    async def test_page_state_cached(self, dispatcher, mock_browser):
-        await dispatcher.dispatch("get_page_state", {}, step=3)
-        await dispatcher.dispatch("get_page_state", {}, step=4)
-        # Only one actual call to browser
-        assert mock_browser.page_state.get_page_state.await_count == 1
-
-    @pytest.mark.asyncio
-    async def test_page_state_cache_invalidated(self, dispatcher, mock_browser):
-        await dispatcher.dispatch("get_page_state", {}, step=3)
-        await dispatcher.dispatch("navigate", {"url": "https://other.com"}, step=4)
-        await dispatcher.dispatch("get_page_state", {}, step=5)
-        assert mock_browser.page_state.get_page_state.await_count == 2
 

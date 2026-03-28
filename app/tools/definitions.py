@@ -11,11 +11,6 @@ TOOL_DEFINITIONS = [
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
-        "name": "screenshot",
-        "description": "Take a screenshot of the current page to see its current state visually.",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
         "name": "navigate",
         "description": (
             "Navigate to a URL. Always include the full URL with https://. "
@@ -39,7 +34,9 @@ TOOL_DEFINITIONS = [
             "Click at absolute pixel coordinates. Compute center from bbox: "
             "x = bbox[0] + bbox[2]//2, y = bbox[1] + bbox[3]//2. "
             "After clicking, always call get_page_state() to verify the result. "
-            "If click has no effect, the element may be obscured — try scrolling first."
+            "If click has no effect, the element may be obscured — try scrolling first. "
+            "Returns current URL after click. If URL changed, page navigated. "
+            "Call get_page_state() to see the updated page."
         ),
         "input_schema": {
             "type": "object",
@@ -104,16 +101,39 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "wait",
-        "description": "Wait for dynamic content to load. Maximum 5000ms.",
+        "description": (
+            "Wait only when you see a loading indicator or spinner in the screenshot. "
+            "Do NOT call wait() after navigate() or click() — they already wait for "
+            "the page to stabilize. Maximum 3000ms."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "milliseconds": {
                     "type": "integer",
-                    "description": "How long to wait in milliseconds (max 5000)",
+                    "description": "How long to wait in milliseconds (max 3000)",
                 }
             },
             "required": ["milliseconds"],
+        },
+    },
+    {
+        "name": "type_and_submit",
+        "description": (
+            "Click an input field, type text, and press Enter to submit — "
+            "all in a single step. Use for search boxes, forms, and any input "
+            "where you need to type and immediately submit. "
+            "Provide the center coordinates of the input field. "
+            "More efficient than calling click + type_text + press_key separately."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "x": {"type": "integer", "description": "X coordinate of the input field center"},
+                "y": {"type": "integer", "description": "Y coordinate of the input field center"},
+                "text": {"type": "string", "description": "Text to type and submit"},
+            },
+            "required": ["x", "y", "text"],
         },
     },
     {

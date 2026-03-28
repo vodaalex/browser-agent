@@ -39,7 +39,7 @@ class BrowserManager:
         )
         self._context = await self._browser.new_context(
             viewport={"width": self._cfg.viewport_width, "height": self._cfg.viewport_height},  # type: ignore[arg-type]
-            device_scale_factor=2,
+            device_scale_factor=1,
             user_agent=self._cfg.user_agent,
         )
         self._page = await self._context.new_page()

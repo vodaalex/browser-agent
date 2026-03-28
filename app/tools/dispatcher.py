@@ -63,7 +63,7 @@ class ToolDispatcher:
     @property
     def page_changes_on(self) -> frozenset[str]:
         """Tools that trigger action_result events (non-observation tools)."""
-        return frozenset({"navigate", "click", "type_text", "press_key", "scroll", "wait"})
+        return frozenset({"navigate", "click", "type_text", "press_key", "scroll", "wait", "type_and_submit"})
 
     # ── Action descriptions (human-readable) ─────────────────────
 
@@ -83,8 +83,12 @@ class ToolDispatcher:
             text = args.get("text", "")
             preview = text[:25] + "…" if len(text) > 25 else text
             return f'Typing "{preview}"'
-        elif tool in ("get_page_state", "screenshot"):
+        elif tool == "get_page_state":
             return "Analyzing page state"
+        elif tool == "type_and_submit":
+            text = args.get("text", "")
+            preview = text[:25] + "…" if len(text) > 25 else text
+            return f'Search "{preview}"'
         elif tool == "wait":
             return f"Waiting {args.get('milliseconds', 0)}ms"
         elif tool == "scroll":
@@ -105,11 +109,11 @@ class ToolDispatcher:
     def _build_registry(self) -> dict[str, Handler]:
         return {
             "get_page_state": handlers.handle_page_state,
-            "screenshot": handlers.handle_page_state,
             "navigate": handlers.handle_navigate,
             "click": handlers.handle_click,
             "type_text": handlers.handle_type_text,
             "press_key": handlers.handle_press_key,
             "scroll": handlers.handle_scroll,
             "wait": handlers.handle_wait,
+            "type_and_submit": handlers.handle_type_and_submit,
         }

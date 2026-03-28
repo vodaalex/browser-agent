@@ -114,7 +114,7 @@ class AgentExecutor:
                             "args": tool_input,
                         }
                         # Attach current URL for page-observation actions
-                        if tool_name in ("get_page_state", "screenshot"):
+                        if tool_name in ("get_page_state", "type_and_submit"):
                             action_event["url"] = self.dispatcher.current_url
                         await self.send_event(action_event)
 
@@ -144,7 +144,7 @@ class AgentExecutor:
                     )
 
                     # Track URL from page-state observations
-                    if tool_name in ("get_page_state", "screenshot"):
+                    if tool_name == "get_page_state":
                         self._track_url_from_result(result_content)
 
                     # Send action_result event for non-observation tools

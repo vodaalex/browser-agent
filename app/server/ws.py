@@ -1,5 +1,3 @@
-"""WebSocket endpoint — bridges the frontend UI with the AgentExecutor."""
-
 from __future__ import annotations
 
 import asyncio
