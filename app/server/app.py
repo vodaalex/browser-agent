@@ -1,5 +1,3 @@
-"""FastAPI application factory, lifespan, and HTTP routes."""
-
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -27,11 +25,8 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    """Build and return the configured FastAPI application."""
     app = FastAPI(lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-    # ── HTTP routes ──────────────────────────────────────────────
 
     @app.get("/")
     async def index():
@@ -41,7 +36,6 @@ def create_app() -> FastAPI:
     async def favicon():
         return Response(status_code=204)
 
-    # ── WebSocket ────────────────────────────────────────────────
 
     app.websocket("/ws")(websocket_endpoint)
 

@@ -28,7 +28,6 @@ class PageStateExtractor:
         return b64
 
     async def get_elements(self) -> dict:
-        """Fast observation: elements + URL, no screenshot."""
         self._call_count += 1
         if self._call_count % 10 == 0:
             try:
@@ -73,10 +72,8 @@ class PageStateExtractor:
             "dom_hash": dom_hash,
         }
 
-    # ── Private helpers ──────────────────────────────────────────
 
     async def _get_dom_hash(self) -> str:
-        """DOM fingerprint based on visible content — detects modals, navigation and page changes."""
         try:
             result = await self._page.evaluate("""() => {
                 const headers = [...document.querySelectorAll('h1,h2,h3')]
@@ -84,85 +81,49 @@ class PageStateExtractor:
                 const dialogs = document.querySelectorAll(
                     '[role="dialog"]:not([hidden])'
                 ).length;
-                const visibleBtns = document.querySelectorAll(
-                    'button:not([disabled])'
-                ).length;
-                return headers + '_d' + dialogs + '_b' + visibleBtns;
+                const clickable = [...document.querySelectorAll('*')]
+                    .filter(el => {
+                        if (el.offsetParent === null && el.tagName !== 'BODY') return false;
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width === 0 || rect.height === 0) return false;
+                        const ti = parseInt(el.getAttribute('tabindex') ?? '-1');
+                        const role = el.getAttribute('role') || '';
+                        return ti >= 0 || ['button','link','menuitem','tab',
+                            'checkbox','radio','option'].includes(role);
+                    }).length;
+                return headers + '_d' + dialogs + '_c' + clickable;
             }""")
             return str(result)
         except Exception:
             return ""
 
-    async def _auto_dismiss_popups(self):
-        """Dismiss popups heuristically. Not called automatically — agent decides."""
-        try:
-            dismissed = await self._page.evaluate("""() => {
-                const closeTexts = ['×', '✕', '✗', 'X', 'Close', 'Закрыть',
-                                   'Нет, спасибо', 'Нет', 'Отмена', 'Пропустить',
-                                   'Не сейчас', 'Skip', 'Cancel', 'Dismiss'];
-                const allElements = document.querySelectorAll(
-                    'button, [role="button"], a, span, div'
-                );
-                for (const el of allElements) {
-                    if (!el.offsetParent && el.tagName !== 'BODY') continue;
-                    const rect = el.getBoundingClientRect();
-                    if (rect.width === 0 || rect.height === 0) continue;
-                    const text = (el.innerText || el.getAttribute('aria-label') || '').trim();
-                    const isCloseBtn = closeTexts.some(t =>
-                        text === t || text.toLowerCase() === t.toLowerCase()
-                    );
-                    if (!isCloseBtn) continue;
-                    let parent = el.parentElement;
-                    let isOverlay = false;
-                    for (let i = 0; i < 5; i++) {
-                        if (!parent) break;
-                        const ps = window.getComputedStyle(parent);
-                        const zi = parseInt(ps.zIndex) || 0;
-                        if (zi > 100 || ps.position === 'fixed') {
-                            isOverlay = true;
-                            break;
-                        }
-                        parent = parent.parentElement;
-                    }
-                    if (isOverlay) {
-                        el.click();
-                        return true;
-                    }
-                }
-                return false;
-            }""")
-            if dismissed:
-                await asyncio.sleep(0.4)
-                return
-            has_dialog = await self._page.evaluate("""() => {
-                const dialogs = document.querySelectorAll(
-                    '[role="dialog"], [role="alertdialog"]'
-                );
-                for (const d of dialogs) {
-                    const rect = d.getBoundingClientRect();
-                    if (rect.width > 0 && rect.height > 0) return true;
-                }
-                return false;
-            }""")
-            if has_dialog:
-                await self._page.keyboard.press("Escape")
-                await asyncio.sleep(0.3)
-        except Exception:
-            logger.debug("Popup dismiss failed (non-critical)")
 
     async def _get_accessibility_tree(self) -> list:
         elements: list[dict] = []
         try:
             results = await self._page.evaluate("""() => {
-                const SELECTORS = 'button, a, input, select, textarea, ' +
-                    '[role="button"], [role="link"], [role="menuitem"], ' +
-                    '[role="tab"], [role="checkbox"], [role="radio"], ' +
-                    '[role="option"], li[tabindex], [role="listitem"]';
+                const INTERACTIVE_ROLES = new Set([
+                    'button','link','menuitem','tab','checkbox',
+                    'radio','option','listitem','combobox','textbox',
+                    'searchbox','spinbutton','slider','switch'
+                ]);
                 const vh = window.innerHeight;
                 const vw = window.innerWidth;
                 const modalElements = [];
                 const regularElements = [];
-                for (const el of document.querySelectorAll(SELECTORS)) {
+                const allEls = [...document.querySelectorAll('*')].filter(el => {
+                    if (el.offsetParent === null && el.tagName !== 'BODY') return false;
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) return false;
+                    const ti = parseInt(el.getAttribute('tabindex') ?? '-1');
+                    if (ti >= 0) return true;
+                    const role = (el.getAttribute('role') || '').toLowerCase();
+                    if (INTERACTIVE_ROLES.has(role)) return true;
+                    const tag = el.nodeName.toLowerCase();
+                    return ['input','select','textarea'].includes(tag) &&
+                           el.type !== 'hidden';
+                });
+                for (const el of allEls) {
                     const r = el.getBoundingClientRect();
                     if (r.x < -50 || r.y < -50 || r.y > vh + 50) continue;
                     if (r.x > vw + 50) continue;

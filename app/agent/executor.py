@@ -229,7 +229,6 @@ class AgentExecutor:
         }
 
     def _track_url_from_result(self, result_content):
-        """Extract URL from an observation result and record it for stuck detection."""
         dom_hash = getattr(
             self.dispatcher._browser.page_state, "_last_dom_hash", ""
         )

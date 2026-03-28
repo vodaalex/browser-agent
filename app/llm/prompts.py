@@ -65,8 +65,6 @@ PLANNER_SYSTEM_PROMPT = (
     "You are a planning agent. Given a browser task, "
     "output a JSON array of 3-5 high-level steps to accomplish it. "
     "Steps should be abstract goals, not specific actions. "
-    'Example: ["Navigate to hh.ru", "Search for AI engineer vacancies", '
-    '"Open first 3 relevant results", "Apply with cover letter"]\n'
     "Output ONLY a raw JSON array. No markdown, no explanation. "
     "Write all steps in Russian."
 )

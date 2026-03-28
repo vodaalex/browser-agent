@@ -33,7 +33,6 @@ def mock_browser():
 
 @pytest.fixture
 def mock_llm_response():
-    """Factory fixture for building mock LLM responses."""
 
     def _make(text: str = "", tool_calls: list | None = None, stop_reason: str = "end_turn"):
         response = MagicMock()
