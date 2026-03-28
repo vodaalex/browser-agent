@@ -20,7 +20,12 @@ class BrowserActions:
             await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             await self._wait_for_stable()
             self._notify_page_change()
-            return {"success": True, "url": self._page.url}
+            title = await self._page.title()
+            return {
+                "success": True,
+                "url": self._page.url,
+                "title": title[:80] if title else "",
+            }
         except Exception as e:
             logger.warning("Navigate failed: %s", e)
             return {
@@ -37,7 +42,7 @@ class BrowserActions:
             return {
                 "success": True,
                 "url": self._page.url,
-                "hint": "Call get_page_state() to see what changed",
+                "hint": "Call get_elements() to see what changed, or get_page_state() if visual context needed",
             }
         except Exception as e:
             logger.warning("Click failed: %s", e)
@@ -70,7 +75,7 @@ class BrowserActions:
             await self._page.mouse.wheel(delta_x=0, delta_y=delta_y)
             await asyncio.sleep(0.3)
             self._notify_page_change()
-            return {"success": True}
+            return {"success": True, "hint": "Call get_elements() to see newly visible items"}
         except Exception as e:
             logger.warning("Scroll failed: %s", e)
             return {"success": False, "error": str(e)}
@@ -102,7 +107,12 @@ class BrowserActions:
             await self._page.go_back(wait_until="domcontentloaded", timeout=10_000)
             await self._wait_for_stable()
             self._notify_page_change()
-            return {"success": True, "url": self._page.url}
+            title = await self._page.title()
+            return {
+                "success": True,
+                "url": self._page.url,
+                "title": title[:80] if title else "",
+            }
         except Exception as e:
             logger.warning("go_back failed: %s", e)
             return {"success": False, "error": str(e)}

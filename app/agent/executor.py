@@ -37,6 +37,8 @@ class AgentExecutor:
         self._running = False
         self._step = 0
         self._stuck_count = 0
+        # Routing: True → use Sonnet (vision step), False → use Haiku (text step)
+        self._needs_vision_model = True
 
     # ── Public API ───────────────────────────────────────────────
 
@@ -45,6 +47,7 @@ class AgentExecutor:
         self._running = True
         self._step = 0
         self._stuck_count = 0
+        self._needs_vision_model = True  # first call always Sonnet (no context yet)
         self.context.reset()
         self.dispatcher.invalidate_cache()
 
@@ -75,11 +78,19 @@ class AgentExecutor:
                         break
                     self._step = 0  # reset counter, keep going
 
-                # ── Main LLM call ────────────────────────────────
+                # ── Main LLM call (routing: Sonnet for vision, Haiku for text) ──
+                if self._needs_vision_model:
+                    model_override = None          # default Sonnet
+                    tokens_override = None         # default 800
+                else:
+                    model_override = settings.action_model_name   # Haiku
+                    tokens_override = settings.action_max_tokens  # 600
                 response = await self.llm.create_message(
                     messages=self.context.messages,
                     system=SYSTEM_PROMPT,
                     tools=TOOL_DEFINITIONS,
+                    model_override=model_override,
+                    max_tokens=tokens_override,
                 )
 
                 self.context.append_assistant(response.content)
@@ -116,7 +127,7 @@ class AgentExecutor:
                             "args": tool_input,
                         }
                         # Attach current URL for page-observation actions
-                        if tool_name in ("get_page_state", "type_and_submit"):
+                        if tool_name in ("get_page_state", "get_elements", "type_and_submit"):
                             action_event["url"] = self.dispatcher.current_url
                         await self.send_event(action_event)
 
@@ -183,6 +194,15 @@ class AgentExecutor:
                             "Попробуй кардинально другой подход к задаче. "
                             "Не повторяй то что уже делал."
                         )
+
+                # ── Update routing flag for next iteration ───────
+                # Next step needs Sonnet only if agent just called get_page_state
+                # (screenshot will be in context and must be processed visually).
+                # All other tools produce text-only results → Haiku is sufficient.
+                self._needs_vision_model = any(
+                    block.type == "tool_use" and block.name == "get_page_state"
+                    for block in response.content
+                )
 
                 if stop_after:
                     break

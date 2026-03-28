@@ -14,11 +14,11 @@ TOOL_DEFINITIONS = [
     {
         "name": "get_page_state",
         "description": (
-            "Primary observation tool. Returns: (1) screenshot as JPEG image, "
-            "(2) list of up to 25 interactive elements with bbox coordinates, "
-            "(3) current URL. Call this after every navigation or click to see "
-            "what changed. If an element you need is not in the list, it may be "
-            "outside the viewport — use scroll() then call get_page_state() again."
+            "Visual observation tool. Returns a screenshot + interactive elements + URL. "
+            "Use ONLY when you need to see the page visually: "
+            "first visit to an unknown page, reading prices/text not in element labels, "
+            "or understanding a complex layout. "
+            "For all other cases use get_elements() — it is 5-10x faster."
         ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
@@ -26,7 +26,9 @@ TOOL_DEFINITIONS = [
         "name": "navigate",
         "description": (
             "Navigate to a URL. Always include the full URL with https://. "
-            "After navigation, call get_page_state() to verify the page loaded correctly. "
+            "Returns the final URL and page title so you can verify the correct page loaded. "
+            "After navigation call get_elements() to read interactive elements, "
+            "or get_page_state() only if you need to visually inspect the layout. "
             "If the page requires login, call ask_user() for credentials."
         ),
         "input_schema": {
@@ -45,10 +47,10 @@ TOOL_DEFINITIONS = [
         "description": (
             "Click at absolute pixel coordinates. Compute center from bbox: "
             "x = bbox[0] + bbox[2]//2, y = bbox[1] + bbox[3]//2. "
-            "After clicking, always call get_page_state() to verify the result. "
-            "If click has no effect, the element may be obscured — try scrolling first. "
-            "Returns current URL after click. If URL changed, page navigated. "
-            "Call get_page_state() to see the updated page."
+            "Returns the URL after click — if it changed, the page navigated. "
+            "After clicking call get_elements() to check the result. "
+            "Use get_page_state() only when you need visual confirmation of the new state. "
+            "If click has no effect, scroll to the element first and try again."
         ),
         "input_schema": {
             "type": "object",
@@ -91,7 +93,11 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "scroll",
-        "description": "Scroll the page at the given coordinates. Use positive delta_y to scroll down, negative to scroll up.",
+        "description": (
+            "Scroll the page at the given coordinates. "
+            "Positive delta_y scrolls down, negative scrolls up. "
+            "After scrolling call get_elements() to see newly visible interactive elements."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -114,7 +120,9 @@ TOOL_DEFINITIONS = [
     {
         "name": "wait",
         "description": (
-            "Wait only when you see a loading indicator or spinner in the screenshot. "
+            "Wait when you know the page is still loading — for example after submitting "
+            "a form that triggers a slow request, or when get_elements() keeps returning "
+            "the same empty or partial state. "
             "Do NOT call wait() after navigate() or click() — they already wait for "
             "the page to stabilize. Maximum 3000ms."
         ),
