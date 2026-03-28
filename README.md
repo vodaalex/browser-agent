@@ -1,135 +1,410 @@
-# Browser Agent
+# Innie — Автономный браузерный агент
 
-Autonomous AI agent that controls a web browser to complete complex tasks.
-You describe the task in plain text — the agent figures out how to do it.
+> Опиши задачу текстом. Агент откроет реальный браузер и разберётся сам.
 
-## Stack
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Playwright](https://img.shields.io/badge/Playwright-1.40+-2EAD33?style=flat-square&logo=playwright&logoColor=white)](https://playwright.dev)
+[![Anthropic](https://img.shields.io/badge/Anthropic-claude--sonnet--4--5-D97757?style=flat-square)](https://anthropic.com)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE)
 
-- Python 3.11+, FastAPI, WebSocket
-- Playwright (Chromium, headful)
-- Anthropic API (claude-sonnet-4-5)
-- Dual-channel perception: screenshot + accessibility tree
+---
 
-## Architecture
+## Что это
 
-**ReAct loop:** Observe → Think → Act → Repeat
+Innie — AI-агент, который автономно управляет реальным браузером Chromium для выполнения сложных веб-задач. Описываешь задачу на естественном языке — агент наблюдает страницу, принимает решение, действует и повторяет цикл до завершения.
 
-On each step the agent:
-1. Calls `get_page_state()` — takes a screenshot and extracts interactive elements with coordinates
-2. Analyzes both channels and decides what to do next
-3. Executes an action (navigate, click, type, scroll, etc.)
-4. Repeats until the task is complete
+```
+"Найди 3 вакансии AI-инженера на hh.ru и выведи краткое описание"
+"Найди BBQ-бургер на Яндекс.Еде, покажи цену"
+"Открой Gmail, прочитай последние 10 писем, найди спам"
+```
 
-## Advanced Patterns
+Агент сам справляется с навигацией, попапами, формами, динамическим контентом. Если нужны данные которых у него нет (логин, адрес) — он спрашивает.
+
+---
+
+## Демо
+
+<!-- INSERT VIDEO HERE -->
+
+---
+
+## Стек
+
+| Слой | Технология | Версия |
+|---|---|---|
+| Язык | Python | 3.11+ |
+| Автоматизация браузера | Playwright (Chromium) | ≥ 1.40.0 |
+| LLM | Anthropic API (прямые вызовы) | ≥ 0.40.0 |
+| Основная модель | claude-sonnet-4-5 | — |
+| Быстрая модель | claude-haiku-4-5 | 20251001 |
+| Веб-сервер | FastAPI + WebSocket | ≥ 0.110.0 |
+| Конфигурация | pydantic-settings | ≥ 2.0.0 |
+| Тесты | pytest + pytest-asyncio | ≥ 8.0.0 / 0.23.0 |
+
+---
+
+## Архитектура
+
+### Схема компонентов
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         FastAPI / WS                         │
+│                         server/ws.py                         │
+└────────────────────────────┬────────────────────────────────┘
+                             │ task
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                       AgentExecutor                          │
+│                       executor.py                            │
+│                                                              │
+│   ┌─────────────┐   ┌──────────────┐   ┌────────────────┐  │
+│   │ TaskPlanner │   │ContextManager│   │ToolDispatcher  │  │
+│   │ planner.py  │   │  context.py  │   │ dispatcher.py  │  │
+│   └─────────────┘   └──────────────┘   └───────┬────────┘  │
+└───────────────────────────────────────────────┬─┼───────────┘
+                                                │ │
+                             ┌──────────────────┘ │
+                             ▼                     ▼
+              ┌──────────────────────┐   ┌──────────────────┐
+              │    BrowserManager    │   │    LLMClient      │
+              │     manager.py       │   │    client.py      │
+              │                      │   └──────────────────┘
+              │  ┌────────────────┐  │
+              │  │ BrowserActions │  │
+              │  │  actions.py    │  │
+              │  ├────────────────┤  │
+              │  │PageStateExtra- │  │
+              │  │ctor  page.py   │  │
+              │  └────────────────┘  │
+              └──────────────────────┘
+                        │
+                        ▼
+               ┌─────────────────┐
+               │  Real Chromium  │
+               │  (headful/less) │
+               └─────────────────┘
+```
+
+### ReAct-цикл
+
+Агент работает в непрерывном цикле **Наблюдение → Мышление → Действие**, реализованном в `executor.py`:
+
+```
+1. Вызов get_elements() или get_page_state()   ← Наблюдение
+2. LLM получает состояние страницы + историю  ← Мышление
+3. LLM генерирует вызов инструмента           ← Действие
+4. Инструмент выполняется, результат пишется в контекст
+5. Повтор до task_complete() или ask_user()
+```
+
+Каждое решение принимается в моменте на основе того, что агент видит прямо сейчас.
+
+---
+
+## Основные компоненты
+
+### Автоматизация браузера — `app/browser/`
+
+Три модуля управляют реальным экземпляром Chromium:
+
+**`manager.py` — BrowserManager**
+
+Запускает и управляет процессом Playwright Chromium. Конфигурирует контекст с реалистичным User-Agent, фиксированным viewport (1280×800) и `device_scale_factor=1` (предотвращает 4× нагрузку на GPU от Retina-рендеринга). При старте соединяет `BrowserActions` и `PageStateExtractor`.
+
+**`actions.py` — BrowserActions**
+
+Все взаимодействия с живой страницей браузера. Каждый метод соответствует инструменту агента:
+
+| Метод | Что делает |
+|---|---|
+| `navigate(url)` | Полная навигация с ожиданием `domcontentloaded` + network idle |
+| `click(x, y)` | Клик мышью по абсолютным координатам в пикселях |
+| `type_text(text)` | Ввод с задержкой 15мс на символ |
+| `press_key(key)` | Нажатие клавиши — Enter, Escape, Tab, Control+a и т.д. |
+| `scroll(x, y, delta_y)` | Прокрутка колёсиком в произвольной позиции |
+| `wait(ms)` | Ожидание, ограниченное 3000мс |
+| `type_and_submit(x, y, text)` | Клик + ввод + Enter в одном атомарном вызове |
+| `go_back()` | Назад в истории браузера |
+
+После каждого действия, меняющего страницу, `on_page_change` инвалидирует кэш элементов — следующее наблюдение всегда актуально.
+
+**`page.py` — PageStateExtractor**
+
+Извлекает два типа наблюдений из живого DOM:
+
+- **`get_elements()`** — без скриншота. Обходит DOM в поиске всех фокусируемых и интерактивных элементов. Возвращает до 25 элементов с типом, текстом и bounding box. Быстро, ~50мс.
+- **`get_page_state()`** — полное наблюдение. То же + JPEG-скриншот quality=80. Используется когда нужен визуальный контекст: первый визит, чтение цен, понимание раскладки.
+
+Обнаружение интерактивных элементов работает через три универсальных сигнала без привязки к конкретным сайтам:
+- `tabindex >= 0` — нативная фокусируемость браузера
+- ARIA-атрибут `role` — семантический тип виджета
+- `nodeName` для нативных форм (`input`, `select`, `textarea`)
+
+Элементы внутри модальных окон определяются через `role="dialog"` и `z-index > 100` у fixed/absolute предков — и выводятся первыми в списке, чтобы агент всегда видел оверлеи раньше фонового UI.
+
+URL-based DOM-кэш исключает повторный обход DOM если страница не изменилась. Кэш инвалидируется при каждом действии.
+
+---
+
+### Автономный AI-агент — `app/agent/`
+
+**`executor.py` — AgentExecutor**
+
+ReAct-цикл. На каждом шаге:
+
+1. Отправляет текущие `context.messages` в LLM с полной схемой инструментов
+2. Получает текстовую мысль, вызовы инструментов или `end_turn`
+3. Выполняет каждый инструмент через `ToolDispatcher`
+4. Дописывает результаты в контекст
+5. Проверяет stuck-состояние; восстанавливается или эскалирует в `ask_user`
+
+Агент полностью реактивен. Он не знает о конкретных сайтах, текстах кнопок, структурах URL. Все решения принимаются в рантайме на основе того, что он видит.
+
+**`planner.py` — TaskPlanner**
+
+Перед запуском основного цикла — один лёгкий LLM-вызов (без скриншота, без инструментов) генерирует план из 3–5 высокоуровневых шагов. План инжектируется в начало истории и задаёт направление, но не ограничивает агента. Если реальность страницы расходится с планом, агент отклоняется самостоятельно.
+
+---
+
+### Управление контекстом — `app/agent/context.py`
+
+История диалога быстро растёт из-за скриншотов. `ContextManager` держит её под контролем:
+
+**Компрессия (срабатывает при превышении 20KB):**
+
+1. Обходит историю с конца, сохраняет `max_screenshots_in_context` последних скриншотов (по умолчанию: 1), заменяет более старые на `[screenshot removed]`
+2. Когда история превышает 12 сообщений: средняя часть усекается — мультимодальные tool results теряют списки элементов и скриншоты, оставляя только URL; текстовые результаты обрезаются до 100 символов
+
+**Что сохраняется всегда:**
+- Первые 2 сообщения (задача + план)
+- Последние 10 сообщений
+
+**Детекция зависания:**
+
+Каждое наблюдение фиксирует `state_key = url + "#" + dom_hash`. DOM-хэш объединяет текст видимых заголовков, количество диалогов и количество кликабельных элементов. Пять подряд одинаковых state_key — триггер recovery:
+- Первый триггер: в контекст добавляется подсказка («попробуй кардинально другой подход»)
+- Второй триггер: эскалация в `ask_user()`
+
+---
+
+## Продвинутые паттерны
 
 ### 1. Dual-Channel Perception
 
-On every step the agent calls `get_page_state()` which returns:
+Два observation-инструмента с разным соотношением скорость/стоимость:
 
-1. **Screenshot** (base64 JPEG) — passed as vision input to Claude
-2. **Accessibility tree** — top 25 interactive elements with type, text, bbox
+```
+get_elements()   → только DOM-обход    → ~50мс,  без токенов на изображение
+get_page_state() → DOM + JPEG-скриншот → ~300мс, +токены изображения
+```
 
-Claude uses both channels simultaneously:
-- Vision for understanding layout, reading text, spotting buttons
-- A11y tree for precise coordinates when clicking elements
+Агент использует `get_page_state()` при первом взгляде на новую страницу, затем переключается на `get_elements()` для шагов, где структура уже понятна. Визуальный контекст запрашивается только когда он реально нужен.
 
-This eliminates the need for hardcoded selectors entirely.
-The agent discovers UI structure dynamically on every step.
+Комбинация двух каналов решает фундаментальную проблему: только скриншот — нет точных координат для кликов; только DOM — нет визуального контекста (раскладка, содержимое, группировка). Вместе они дают полную картину.
 
 ### 2. Hierarchical Planning
 
-Before executing a task the agent makes one lightweight API call
-(no screenshot) and produces a plan of 3-5 high-level steps.
-The plan is injected into the conversation context and guides execution.
-The agent can deviate from the plan on its own when needed.
+```
+Задача → [Planner LLM, без скриншота, ~$0.001] → План (3-5 шагов)
+       → [Executor loop с полным восприятием]   → Выполнение
+```
 
-Pattern: **Plan → Execute → Adapt**
+Один недорогой LLM-вызов перед основным циклом переводит размытую цель в навигируемые вехи. Снижает хаотичное исследование на первых шагах без скриптования фактических действий в браузере. Паттерн: **Plan → Execute → Adapt**.
 
-### 3. Tool Consolidation
+### 3. Model Routing (Sonnet / Haiku)
 
-По рекомендации Anthropic — консолидация overlapping tools.
-Убран дублирующий tool `screenshot` (заменён `get_page_state`).
-Добавлен `type_and_submit` — объединяет click+type+Enter в один вызов.
-Сокращает количество шагов для поиска с 3 до 1.
+Не каждый LLM-вызов требует визуальных возможностей. После `get_elements()` следующий шаг можно делать на `claude-haiku-4-5` — быстрее и дешевле. После `get_page_state()` обязательно `claude-sonnet-4-5` для обработки изображения.
 
-### 4. Context Management
+```python
+self._needs_vision_model = any(
+    block.name == "get_page_state"
+    for block in response.content
+    if block.type == "tool_use"
+)
+```
 
-- Full conversation history maintained across steps
-- Screenshots rotated: only last 2 kept in context (older replaced with placeholder)
-- Compression triggered at 200k chars to stay within token limits
-- `max_tokens` capped at 1024 to reduce cost per step
+Флаг устанавливается автоматически после каждого шага. Vision-шаги: Sonnet, 800 max_tokens. Текстовые шаги: Haiku, 600 max_tokens.
 
-## Technical Decisions
+### 4. DOM-Hash Stuck Detection
 
-### Почему Playwright
-Async-first API совместим с asyncio архитектурой.
-Встроенный accessibility tree через query_selector_all.
-Надёжная обработка динамических страниц через networkidle.
-Лучше Selenium по скорости, лучше Puppeteer по Python-поддержке.
+Лёгкий фингерпринт DOM заменяет наивную детекцию только по URL:
 
-### Почему Anthropic API напрямую
-Прямой контроль над форматом сообщений — критично для multimodal
-(скриншоты передаются как image blocks внутри tool_result).
-Нет overhead абстракций LangChain/LlamaIndex.
-Проще отлаживать и оптимизировать контекст вручную.
+```javascript
+headers    // текст видимых h1/h2/h3, первые 100 символов
++ dialogs  // количество видимых [role="dialog"] элементов
++ clickable // количество фокусируемых/интерактивных элементов
+```
 
-### Почему JPEG quality=80, device_scale_factor=1
-device_scale_factor=2 рендерил в 2560x1600 — в 4x больше пикселей.
-Это нагружало GPU и замедляло скриншоты.
-При scale=1 + quality=80: чёткое изображение, низкая нагрузка.
+Это улавливает случаи, когда URL не меняется, но страница смыслово изменилась (открылось модальное окно, загрузился список, переключился таб) — и избегает ложных срабатываний на SPA-сайтах.
+
+### 5. GC Nudging
+
+Каждые 10 вызовов observation-инструментов агент запускает сборщик мусора в JS:
+
+```python
+await self._page.evaluate("() => { if (window.gc) window.gc(); }")
+```
+
+В сочетании с `--js-flags=--expose-gc` в аргументах запуска браузера предотвращает постепенный рост памяти renderer-процесса при длинных сессиях.
+
+---
+
+## Схема инструментов
+
+11 инструментов. Ни один не содержит знаний о конкретных сайтах.
+
+| Инструмент | Категория | Описание |
+|---|---|---|
+| `get_elements` | Наблюдение | DOM-элементы + URL, без скриншота |
+| `get_page_state` | Наблюдение | Скриншот + DOM-элементы + URL |
+| `navigate` | Действие | Навигация по URL |
+| `click` | Действие | Клик по координатам в пикселях |
+| `type_text` | Действие | Ввод текста в сфокусированный элемент |
+| `press_key` | Действие | Нажатие клавиши |
+| `scroll` | Действие | Прокрутка страницы |
+| `wait` | Действие | Ожидание загрузки страницы |
+| `type_and_submit` | Действие | Клик + ввод + Enter (консолидированный) |
+| `go_back` | Действие | Назад в истории браузера |
+| `ask_user` | Эскалация | Пауза и вопрос пользователю |
+| `task_complete` | Терминальный | Отчёт о результате и завершение |
+
+`type_and_submit` консолидирует три отдельных вызова (click → type_text → press_key Enter) в один. Следуя [рекомендациям Anthropic по дизайну инструментов](https://docs.anthropic.com/en/docs/build-with-claude/tool-use), консолидация перекрывающихся инструментов сокращает round-trip вызовы и ускоряет агента на задачах с поиском.
+
+---
+
+## Установка
+
+**Требования:** Python 3.11+, API-ключ Anthropic
+
+```bash
+# Установить зависимости
+pip install -r requirements.txt
+
+# Установить Chromium
+playwright install chromium
+
+# Настроить окружение
+cp .env.example .env
+# Добавить ANTHROPIC_API_KEY в .env
+```
+
+**Файл `.env`:**
+```env
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+---
+
+## Запуск
+
+```bash
+python run.py
+```
+
+Открой [http://localhost:8000](http://localhost:8000) в браузере.
+
+Отдельное окно Chromium откроется само — можно наблюдать за работой агента в реальном времени. Веб-UI показывает лог действий агента в виде живого таймлайна.
+
+---
+
+## Конфигурация
+
+Все настройки в `app/config.py`, переопределяются через `.env`:
+
+| Параметр | По умолчанию | Описание |
+|---|---|---|
+| `model_name` | `claude-sonnet-4-5` | Основная модель (vision-шаги) |
+| `action_model_name` | `claude-haiku-4-5-20251001` | Быстрая модель (текстовые шаги) |
+| `planner_model_name` | `claude-sonnet-4-5` | Модель для планирования |
+| `max_tokens` | `800` | Макс. токены для Sonnet |
+| `action_max_tokens` | `600` | Макс. токены для Haiku |
+| `max_steps` | `30` | Шагов до вопроса «продолжать?» |
+| `compress_threshold` | `20000` | Размер контекста (байт) для компрессии |
+| `max_screenshots_in_context` | `1` | Сколько скриншотов хранить в истории |
+| `headless` | `false` | Запуск без окна браузера |
+| `viewport_width` | `1280` | Ширина viewport |
+| `viewport_height` | `800` | Высота viewport |
+
+---
+
+## Структура проекта
+
+```
+browser-agent/
+├── run.py                      # Точка входа
+├── app/
+│   ├── config.py               # Настройки (pydantic-settings)
+│   ├── errors.py               # Иерархия исключений
+│   ├── log.py                  # Настройка логирования
+│   ├── agent/
+│   │   ├── context.py          # ContextManager: история, компрессия, детекция зависания
+│   │   ├── executor.py         # AgentExecutor: ReAct-цикл, model routing
+│   │   └── planner.py          # TaskPlanner: иерархическое пре-планирование
+│   ├── browser/
+│   │   ├── manager.py          # BrowserManager: жизненный цикл Playwright
+│   │   ├── actions.py          # BrowserActions: клик, навигация, ввод, прокрутка
+│   │   └── page.py             # PageStateExtractor: скриншот, a11y-дерево, DOM-хэш
+│   ├── llm/
+│   │   ├── client.py           # LLMClient: прямые вызовы Anthropic API
+│   │   └── prompts.py          # SYSTEM_PROMPT, PLANNER_SYSTEM_PROMPT
+│   ├── server/
+│   │   ├── app.py              # FastAPI application factory
+│   │   └── ws.py               # WebSocket endpoint
+│   └── tools/
+│       ├── definitions.py      # JSON-схемы инструментов
+│       ├── dispatcher.py       # ToolDispatcher: реестр + описания
+│       └── handlers.py         # Handler-функции инструментов
+├── static/
+│   └── index.html              # Agent Roadmap UI
+├── tests/
+│   ├── conftest.py             # Фикстуры
+│   ├── test_context.py         # Unit-тесты ContextManager
+│   ├── test_dispatcher.py      # Unit-тесты ToolDispatcher
+│   └── test_planner.py         # Unit-тесты TaskPlanner
+└── requirements.txt
+```
+
+---
+
+## Тесты
+
+```bash
+pytest tests/ -v
+```
+
+Unit-тесты покрывают `ContextManager` (компрессия, детекция зависания), `ToolDispatcher` (маршрутизация, описания) и `TaskPlanner` (парсинг плана, обработка ошибок) — с замоканными зависимостями браузера и LLM.
+
+---
+
+## Технические решения
+
+### Почему Playwright, а не Selenium / Puppeteer
+
+Async-native Python API чисто интегрируется с `asyncio`-архитектурой FastAPI + WebSocket. Надёжное ожидание `networkidle` для динамических страниц, встроенная поддержка accessibility tree, лучшая производительность по сравнению с Selenium. Puppeteer не имеет первоклассной поддержки Python.
+
+### Почему прямые вызовы Anthropic API, а не SDK-обёртки
+
+Прямые вызовы дают полный контроль над форматом сообщений — критично для мультимодальных входов, где скриншоты должны быть встроены как `image`-блоки внутри `tool_result`. Абстракции вроде LangChain скрыли бы эту структуру и добавили overhead без какой-либо пользы.
+
+### Почему JPEG quality=80 и device_scale_factor=1
+
+`device_scale_factor=2` рендерит в 2560×1600 — в четыре раза больше пикселей. Это давало ощутимую нагрузку на GPU и замедляло создание скриншотов. При `scale=1` и `quality=80` изображения визуально чёткие и быстро кодируются. Агент читает текст, распознаёт кнопки и понимает раскладку без Retina-разрешения.
 
 ### Почему Dual-Channel Perception
-Только скриншот: агент не знает точные координаты кнопок.
-Только a11y tree: агент не видит визуальный контекст и layout.
-Вместе: скриншот для понимания страницы + дерево для точных кликов.
-Исключает хардкодные селекторы полностью — агент адаптируется
-к любому сайту динамически.
+
+Только скриншот — агент не знает точных координат для кликов, приходится угадывать из картинки. Только accessibility tree — есть координаты, но нет визуального контекста (раскладка, содержимое, группировка). Вместе: дерево даёт точные цели для кликов; скриншот — пространственное и семантическое понимание.
+
+### Почему два observation-инструмента вместо одного
+
+Единственный `get_page_state()` прикреплял бы скриншот к каждому наблюдению. Скриншоты стоят ~1500–3000 токенов каждый. Большинство промежуточных шагов не требуют визуального подтверждения — достаточно обновлённого списка элементов. `get_elements()` даёт это за ~50мс с почти нулевой стоимостью в токенах.
 
 ### Почему Hierarchical Planning
-Без плана агент действует реактивно и может зациклиться.
-Один лёгкий API вызов (~$0.001, без скриншота) в начале задачи.
-План направляет выполнение но не ограничивает — агент отклоняется
-когда нужно (Plan→Execute→Adapt).
 
-### Почему auto-dismiss попапов убран
-Автоматическое закрытие попапов мешало агенту работать с модальными окнами
-(выбор адреса доставки, корзина, формы оплаты).
-Агент сам решает что делать с попапом на основе скриншота и контекста задачи.
-Это следует принципу Anthropic: агент должен самостоятельно определять
-действия без заготовленных паттернов поведения.
+Без плана агент начинает с нуля на шаге 1 без ориентиров. Планирующий вызов на 300 токенов создаёт вехи, которые направляют первые шаги. План носит рекомендательный характер — агент отклоняется когда страница не совпадает с ожиданиями. Паттерн Plan → Execute → Adapt, а не жёсткое скриптование.
 
-### Управление контекстом
-Скриншоты ротируются: в контексте хранятся только 2 последних.
-Старые заменяются на "[screenshot removed]" для экономии токенов.
-Сжатие при 100k символов предотвращает рост стоимости на длинных задачах.
-Старые tool results в середине истории заменяются на "[result truncated]".
-URL-based кэш a11y tree исключает повторный обход DOM без изменений страницы.
+### Почему Model Routing
 
-## Setup
-
-```bash
-pip install -r requirements.txt
-playwright install chromium
-cp .env.example .env   # then add your ANTHROPIC_API_KEY
-```
-
-## Run
-
-```bash
-python main.py
-# Open http://localhost:8000
-```
-
-The Playwright browser opens as a separate window — you can watch the agent work in real time.
-The web UI (localhost:8000) shows only the agent's action log as a timeline.
-
-## Usage
-
-Type any browser task in the UI. Examples:
-
-- "Go to hh.ru and find 3 AI engineer vacancies"
-- "Open google.com and search for the weather in Amsterdam"
-- "Read the last 10 emails in Gmail and identify spam"
-- "Order a BBQ burger on Yandex.Eda from my usual place"
-
-The agent will ask you (`ask_user`) if it needs credentials or clarification.
+`claude-sonnet-4-5` нужен когда в контексте есть скриншот. На текстовых шагах `claude-haiku-4-5` значительно быстрее и дешевле без потери качества рассуждений. Флаг роутинга устанавливается автоматически — без ручной настройки.
